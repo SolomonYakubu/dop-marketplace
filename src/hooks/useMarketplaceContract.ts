@@ -4,18 +4,14 @@ import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { useMemo } from "react";
 import { getMarketplaceContract } from "@/lib/contract";
-
+import { getRpcUrl } from "@/lib/utils";
 export function useMarketplaceContract() {
   const { address, chain } = useAccount();
 
   const contract = useMemo(() => {
     const chainId =
       chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
-    function getRpcUrl(chainId: number) {
-      return chainId === 2741
-        ? "https://api.mainnet.abs.xyz"
-        : "https://api.testnet.abs.xyz";
-    }
+
     const provider = new ethers.JsonRpcProvider(getRpcUrl(chainId));
 
     try {

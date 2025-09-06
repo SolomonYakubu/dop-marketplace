@@ -2,15 +2,17 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
-import { ethers } from "ethers";
+
 import Link from "next/link";
 import Image from "next/image";
-import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
+import { getTokenAddresses } from "@/lib/contract";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { Offer, Escrow, EscrowStatus } from "@/types/marketplace";
 import {
   formatAddress,
   toGatewayUrl,
   formatTokenAmountWithSymbol,
+  timeAgo,
 } from "@/lib/utils";
 import { useToastContext } from "@/components/providers";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -20,23 +22,6 @@ interface OfferWithListing extends Offer {
   listingCreator?: string;
   escrow?: Escrow;
   listingImage?: string;
-}
-
-function getRpcUrl(chainId: number) {
-  return chainId === 2741
-    ? "https://api.mainnet.abs.xyz"
-    : "https://api.testnet.abs.xyz";
-}
-
-function timeAgo(tsSec: number) {
-  const sec = Math.max(0, Math.floor(Date.now() / 1000 - tsSec));
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const d = Math.floor(hr / 24);
-  return `${d}d ago`;
 }
 
 function getEscrowStatusLabel(status: EscrowStatus) {
@@ -78,6 +63,7 @@ function getEscrowStatusColor(status: EscrowStatus) {
 }
 
 export default function OffersPage() {
+  const { contract } = useMarketplaceContract();
   const { chain, address } = useAccount();
   const toast = useToastContext();
   const [offers, setOffers] = useState<OfferWithListing[]>([]);
@@ -98,11 +84,9 @@ export default function OffersPage() {
     action?: () => Promise<void>;
   }>({ open: false, title: "", message: undefined, action: undefined });
 
-  const chainId = chain?.id ?? 11124;
-  const provider = useMemo(
-    () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
-    [chainId]
-  );
+  const chainId =
+    chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
+
   const tokens = getTokenAddresses(chainId);
 
   const loadOffers = useCallback(async () => {
@@ -112,10 +96,8 @@ export default function OffersPage() {
     setError(null);
 
     try {
-      const contract = getMarketplaceContract(chainId, provider);
-
       // Scan recent offers by id (not by blocks), hydrate details
-      const lastId = await contract.getLastOfferId();
+      const lastId = await contract!.getLastOfferId();
       const MAX_TO_CHECK = BigInt(1000); // how many recent offers to scan
       const MAX_COLLECT = 200; // cap results for UI
       const BATCH = BigInt(50);
@@ -137,7 +119,7 @@ export default function OffersPage() {
         const offersBatch = await Promise.all(
           ids.map(async (id) => {
             try {
-              return await contract.getOffer(id);
+              return await contract!.getOffer(id);
             } catch (e) {
               console.warn("Failed to fetch offer", id.toString(), e);
               return null;
@@ -159,7 +141,7 @@ export default function OffersPage() {
           let listingImage: string | undefined;
 
           try {
-            const listing = await contract.getListing(off.listingId);
+            const listing = await contract!.getListing(off.listingId);
             listingCreator = listing.creator;
             if (address && !relevant) {
               relevant =
@@ -202,7 +184,7 @@ export default function OffersPage() {
           let escrow: Escrow | undefined;
           if (off.accepted) {
             try {
-              escrow = await contract.getEscrow(off.id);
+              escrow = await contract!.getEscrow(off.id);
             } catch {
               // ignore
             }
@@ -229,7 +211,7 @@ export default function OffersPage() {
     } finally {
       setLoading(false);
     }
-  }, [address, chain, chainId, provider]);
+  }, [address, chain, contract]);
 
   const acceptOffer = useCallback(
     async (offerId: bigint) => {
@@ -238,15 +220,7 @@ export default function OffersPage() {
       try {
         setActionLoading(offerId.toString());
 
-        const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
-          .ethereum;
-        if (!eth) throw new Error("Wallet provider not found");
-        const browserProvider = new ethers.BrowserProvider(eth);
-        const contract = getMarketplaceContract(chainId, browserProvider);
-        const signer = await browserProvider.getSigner();
-        contract.connect(signer);
-
-        const tx = await contract.acceptOffer(offerId);
+        const tx = await contract!.acceptOffer(offerId);
         await tx;
 
         toast.showSuccess("Success", "Offer accepted successfully!");
@@ -259,7 +233,7 @@ export default function OffersPage() {
         setActionLoading(null);
       }
     },
-    [chain, address, chainId, loadOffers, toast]
+    [chain, address, contract, toast, loadOffers]
   );
 
   const validateWork = useCallback(
@@ -269,15 +243,7 @@ export default function OffersPage() {
       try {
         setActionLoading(`validate-${offerId.toString()}`);
 
-        const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
-          .ethereum;
-        if (!eth) throw new Error("Wallet provider not found");
-        const browserProvider = new ethers.BrowserProvider(eth);
-        const contract = getMarketplaceContract(chainId, browserProvider);
-        const signer = await browserProvider.getSigner();
-        contract.connect(signer);
-
-        const tx = await contract.validateWork(offerId);
+        const tx = await contract!.validateWork(offerId);
         await tx;
 
         toast.showSuccess("Success", "Work validated successfully!");
@@ -290,49 +256,7 @@ export default function OffersPage() {
         setActionLoading(null);
       }
     },
-    [chain, address, chainId, loadOffers, toast]
-  );
-
-  const openDispute = useCallback(
-    async (offerId: bigint) => {
-      if (!chain || !address) return;
-
-      setConfirm({
-        open: true,
-        title: "Open Dispute",
-        message:
-          "Are you sure you want to open a dispute? This action cannot be undone.",
-        action: async () => {
-          setConfirm((c) => ({ ...c, open: false }));
-          try {
-            setActionLoading(`dispute-${offerId.toString()}`);
-
-            const eth = (
-              window as unknown as { ethereum?: ethers.Eip1193Provider }
-            ).ethereum;
-            if (!eth) throw new Error("Wallet provider not found");
-            const browserProvider = new ethers.BrowserProvider(eth);
-            const contract = getMarketplaceContract(chainId, browserProvider);
-            const signer = await browserProvider.getSigner();
-            contract.connect(signer);
-
-            const tx = await contract.openDispute(offerId);
-            await tx;
-
-            toast.showSuccess("Success", "Dispute opened successfully!");
-            await loadOffers();
-          } catch (e) {
-            const msg =
-              e instanceof Error ? e.message : "Failed to open dispute";
-            console.error("Failed to open dispute:", e);
-            toast.showError("Error", msg);
-          } finally {
-            setActionLoading(null);
-          }
-        },
-      });
-    },
-    [chain, address, chainId, loadOffers, toast]
+    [chain, address, contract, toast, loadOffers]
   );
 
   const cancelOffer = useCallback(
@@ -348,16 +272,7 @@ export default function OffersPage() {
           try {
             setActionLoading(`cancel-${offerId.toString()}`);
 
-            const eth = (
-              window as unknown as { ethereum?: ethers.Eip1193Provider }
-            ).ethereum;
-            if (!eth) throw new Error("Wallet provider not found");
-            const browserProvider = new ethers.BrowserProvider(eth);
-            const contract = getMarketplaceContract(chainId, browserProvider);
-            const signer = await browserProvider.getSigner();
-            contract.connect(signer);
-
-            const tx = await contract.cancelOffer(offerId);
+            const tx = await contract!.cancelOffer(offerId);
             await tx;
 
             toast.showSuccess("Success", "Offer cancelled successfully!");
@@ -373,7 +288,7 @@ export default function OffersPage() {
         },
       });
     },
-    [chain, address, chainId, loadOffers, toast]
+    [chain, address, contract, toast, loadOffers]
   );
 
   useEffect(() => {
@@ -786,20 +701,6 @@ export default function OffersPage() {
                                     : "Validate Work"}
                                 </button>
                               )}
-
-                            <button
-                              onClick={() => openDispute(offer.id)}
-                              disabled={actionLoading === `dispute-${idStr}`}
-                              aria-busy={actionLoading === `dispute-${idStr}`}
-                              className="w-full h-10 px-4 py-2 border border-red-500 text-red-400 rounded-lg hover:bg-red-500/10 disabled:opacity-50"
-                            >
-                              {actionLoading === `dispute-${idStr}`
-                                ? "Opening..."
-                                : address?.toLowerCase() ===
-                                  offer.escrow?.client.toLowerCase()
-                                ? "Request Refund"
-                                : "Open Dispute"}
-                            </button>
                           </div>
                         )}
 

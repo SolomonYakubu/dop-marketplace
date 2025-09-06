@@ -123,7 +123,6 @@ export default function BriefsPage() {
 
     return filtered;
   }, [listings, filters]);
-  console.log(filteredListings);
 
   if (loading) {
     return (

@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
-const gatewayUrl =
-  process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud";
+const gatewayUrl = "https://ipfs.io/ipfs/";
 const { hostname: ipfsHostname, protocol: ipfsProtocol } = new URL(gatewayUrl);
 
 const nextConfig = {

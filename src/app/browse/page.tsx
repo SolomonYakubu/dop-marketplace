@@ -5,7 +5,8 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
-import { getMarketplaceContract } from "@/lib/contract";
+
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { ListingType, EnrichedListing } from "@/types/marketplace";
 import {
   toGatewayUrl,
@@ -20,6 +21,7 @@ import { LoadingCard } from "@/components/Loading";
 
 export default function BrowsePage() {
   const { chain } = useAccount();
+  const { contract } = useMarketplaceContract();
   const [loading, setLoading] = useState(true);
   const [listings, setListings] = useState<EnrichedListing[]>([]);
   const [filteredListings, setFilteredListings] = useState<EnrichedListing[]>(
@@ -33,7 +35,8 @@ export default function BrowsePage() {
   );
   const [showActiveOnly, setShowActiveOnly] = useState(true);
 
-  const chainId = chain?.id ?? 11124;
+  const chainId =
+    chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
   const provider = useMemo(
     () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
     [chainId]
@@ -43,12 +46,11 @@ export default function BrowsePage() {
     async function loadListings() {
       setLoading(true);
       try {
-        const contract = getMarketplaceContract(chainId, provider);
         // Use id-based/view pagination to load all listings
-        let all = await contract.fetchAllListingsByIndex({});
+        let all = await contract!.fetchAllListingsByIndex({});
         if (!all || all.length === 0) {
           // Robust fallback to id scan (still view-based)
-          all = await contract.fetchAllListingsByIdScan({});
+          all = await contract!.fetchAllListingsByIdScan({});
         }
 
         const enriched: EnrichedListing[] = await Promise.all(
@@ -72,7 +74,7 @@ export default function BrowsePage() {
     }
 
     loadListings();
-  }, [chainId, provider]);
+  }, [chainId, contract, provider]);
 
   // Filter and sort listings
   useEffect(() => {

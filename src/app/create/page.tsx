@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
-import { getMarketplaceContract } from "@/lib/contract";
+
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { ListingType } from "@/types/marketplace";
 import type { ListingMetadata } from "@/types/marketplace";
 import { useSearchParams } from "next/navigation";
@@ -11,6 +12,7 @@ import { formatAddress } from "@/lib/utils";
 import { useToastContext } from "@/components/providers";
 
 export default function CreatePage() {
+  const { contract } = useMarketplaceContract();
   const search = useSearchParams();
   const preType = search?.get("type") || search?.get("prefill") || "";
   const target = search?.get("to") || "";
@@ -80,14 +82,9 @@ export default function CreatePage() {
       const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
         .ethereum;
       if (!eth) throw new Error("Wallet provider not found");
-      const provider = new ethers.BrowserProvider(eth);
-      const signer = await provider.getSigner();
-      const contract = getMarketplaceContract(chain.id, provider).connect(
-        signer
-      );
 
       const listingType = type === "brief" ? 0 : 1; // BRIEF/GIG
-      await contract.createListing(listingType, BigInt(category), metadataUri);
+      await contract!.createListing(listingType, BigInt(category), metadataUri);
 
       toast.showSuccess("Success", "Listing created");
       setTitle("");

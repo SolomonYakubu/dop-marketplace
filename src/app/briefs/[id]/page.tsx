@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, use, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
 import {
   toGatewayUrl,
@@ -71,6 +72,7 @@ export default function BriefDetailsPage({
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = use(params);
+  const { contract } = useMarketplaceContract();
   const { chain, address } = useAccount();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,11 +93,8 @@ export default function BriefDetailsPage({
   const [paymentToken, setPaymentToken] = useState("ETH");
   const [submittingOffer, setSubmittingOffer] = useState(false);
 
-  const chainId = chain?.id ?? 11124;
-  const provider = useMemo(
-    () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
-    [chainId]
-  );
+  const chainId =
+    chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
 
   const tokens = getTokenAddresses(chainId);
 
@@ -103,14 +102,13 @@ export default function BriefDetailsPage({
     setLoading(true);
     setError(null);
     try {
-      const contract = getMarketplaceContract(chainId, provider);
       const id = BigInt(resolvedParams.id);
-      const l = await contract.getListing(id);
+      const l = await contract!.getListing(id);
 
       // Check boost status
       let isBoosted = false;
       try {
-        isBoosted = await contract.isBoosted(id);
+        isBoosted = await contract!.isBoosted(id);
       } catch {
         // ignore
       }
@@ -149,15 +147,13 @@ export default function BriefDetailsPage({
     } finally {
       setLoading(false);
     }
-  }, [chainId, provider, resolvedParams.id]);
+  }, [contract, resolvedParams.id]);
 
   const loadOffers = useCallback(async () => {
     if (!state) return;
 
     setLoadingOffers(true);
     try {
-      const contract = getMarketplaceContract(chainId, provider);
-
       // Use contract view to paginate offers for this listing
       const pageSize = 50;
       let offset = 0;
@@ -166,7 +162,7 @@ export default function BriefDetailsPage({
       const MAX_PAGES = 200;
       let pages = 0;
       while (pages < MAX_PAGES) {
-        const page = await contract.getOffersForListing(
+        const page = await contract!.getOffersForListing(
           state.id,
           offset,
           pageSize
@@ -185,7 +181,7 @@ export default function BriefDetailsPage({
           let escrowStatus: EscrowStatus | undefined;
           if (offer.accepted) {
             try {
-              const escrow = await contract.getEscrow(offer.id);
+              const escrow = await contract!.getEscrow(offer.id);
               // Ensure numeric status to avoid enum/index mismatches
               const s = Number(escrow.status);
               escrowStatus = Number.isFinite(s)
@@ -219,7 +215,7 @@ export default function BriefDetailsPage({
     } finally {
       setLoadingOffers(false);
     }
-  }, [state, chainId, provider, address]);
+  }, [state, contract, address]);
 
   // Normalize waiting for transactions across different return shapes (hash or TransactionResponse)
   async function waitTx(

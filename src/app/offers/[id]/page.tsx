@@ -5,7 +5,8 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, use } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
-import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
+import { getTokenAddresses } from "@/lib/contract";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import {
   EscrowStatus,
   DisputeOutcome,
@@ -74,18 +75,6 @@ type ERC20 = {
   ): Promise<ethers.ContractTransactionResponse>;
 };
 
-// Typed helper to get the injected browser provider without using `any`
-function getBrowserProvider(): ethers.BrowserProvider {
-  if (typeof window === "undefined") {
-    throw new Error("No window available");
-  }
-  const w = window as typeof window & { ethereum?: unknown };
-  if (!w.ethereum) {
-    throw new Error("No injected provider found");
-  }
-  return new ethers.BrowserProvider(w.ethereum as ethers.Eip1193Provider);
-}
-
 export default function OfferDetailsPage({
   params,
 }: {
@@ -99,7 +88,7 @@ export default function OfferDetailsPage({
   const [offer, setOffer] = useState<Offer | null>(null);
   const [escrow, setEscrow] = useState<Escrow | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
-
+  const { contract } = useMarketplaceContract();
   // Confirmation modal state
   const [confirm, setConfirm] = useState<{
     open: boolean;
@@ -216,20 +205,19 @@ export default function OfferDetailsPage({
       setLoading(true);
       setError(null);
       try {
-        const contract = getMarketplaceContract(chainId, provider);
         const offerId = BigInt(resolvedParams.id);
 
         // Fetch offer
-        const offerData = await contract.getOffer(offerId);
+        const offerData = await contract!.getOffer(offerId);
 
         // Fetch related listing
-        const listingData = await contract.getListing(offerData.listingId);
+        const listingData = await contract!.getListing(offerData.listingId);
 
         // Try to fetch escrow if offer is accepted
         let escrowData: Escrow | null = null;
         if (offerData.accepted) {
           try {
-            escrowData = await contract.getEscrow(offerId);
+            escrowData = await contract!.getEscrow(offerId);
           } catch {}
         }
 
@@ -240,8 +228,8 @@ export default function OfferDetailsPage({
         );
 
         // Token + fee context
-        const dopAddr = await contract.getDopToken();
-        const { feeDop, feeUsdLike } = await contract.getFees();
+        const dopAddr = await contract!.getDopToken();
+        const { feeDop, feeUsdLike } = await contract!.getFees();
         const paymentToken = offerData.paymentToken as string;
         const itIsEth = paymentToken === ethers.ZeroAddress;
         setIsEth(itIsEth);
@@ -250,7 +238,7 @@ export default function OfferDetailsPage({
         let decimals = 18;
         if (!itIsEth) {
           try {
-            const erc20 = contract.getErc20(paymentToken) as unknown as ERC20;
+            const erc20 = contract!.getErc20(paymentToken) as unknown as ERC20;
             const dec = await erc20.decimals();
             decimals = Number(dec);
             try {
@@ -278,10 +266,10 @@ export default function OfferDetailsPage({
         let needs = false;
         if (!itIsEth && listingData && offerData && clientAddress) {
           try {
-            const erc20 = contract.getErc20(paymentToken) as unknown as ERC20;
+            const erc20 = contract!.getErc20(paymentToken) as unknown as ERC20;
             const raw = await erc20.allowance(
               clientAddress,
-              contract.contractAddress
+              contract!.contractAddress
             );
             allowanceVal = ethers.toBigInt(raw);
             needs = allowanceVal < offerData.amount;
@@ -300,7 +288,7 @@ export default function OfferDetailsPage({
           if (escrowData && address) {
             const finished = isEscrowFinished(escrowData);
             if (finished) {
-              const reviewed = await contract.hasReviewed(offerId, address);
+              const reviewed = await contract!.hasReviewed(offerId, address);
               setHasReviewed(reviewed);
               setCanReview(!reviewed);
             } else {
@@ -320,9 +308,9 @@ export default function OfferDetailsPage({
             (escrowData.status === EscrowStatus.DISPUTED ||
               escrowData.status === EscrowStatus.RESOLVED)
           ) {
-            const header = await contract.getDisputeHeader(offerId);
+            const header = await contract!.getDisputeHeader(offerId);
             setDisputeHeader(header);
-            const allAppeals = await contract.getDisputeAppeals(offerId);
+            const allAppeals = await contract!.getDisputeAppeals(offerId);
             setAppeals(allAppeals);
           } else {
             setDisputeHeader(null);
@@ -356,13 +344,12 @@ export default function OfferDetailsPage({
   const refreshAllowance = async () => {
     if (!offer || !listing || !clientAddress || isEth) return;
     try {
-      const contract = getMarketplaceContract(chainId, provider);
-      const erc20 = contract.getErc20(
+      const erc20 = contract!.getErc20(
         offer.paymentToken as string
       ) as unknown as ERC20;
       const raw = await erc20.allowance(
         clientAddress,
-        contract.contractAddress
+        contract!.contractAddress
       );
       const a = ethers.toBigInt(raw);
       setAllowance(a);
@@ -383,14 +370,10 @@ export default function OfferDetailsPage({
 
     setApproving(true);
     try {
-      // Use browser wallet for approval
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      const token = contract.getErc20(
+      const token = contract!.getErc20(
         offer.paymentToken as string
       ) as unknown as ERC20;
-      const tx = await token.approve(contract.contractAddress, offer.amount);
+      const tx = await token.approve(contract!.contractAddress, offer.amount);
       await tx.wait();
       await refreshAllowance();
       toast.showSuccess(
@@ -424,13 +407,12 @@ export default function OfferDetailsPage({
 
     setSubmitting(true);
     try {
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-
       // For ETH payments, just send the value with the transaction
       if (isEth) {
-        const tx = await contract.acceptOffer(offer.id as bigint, offer.amount);
+        const tx = await contract!.acceptOffer(
+          offer.id as bigint,
+          offer.amount
+        );
         await tx.wait();
         toast.showSuccess("Success", "Offer accepted");
         window.location.reload();
@@ -446,7 +428,7 @@ export default function OfferDetailsPage({
         return;
       }
 
-      const tx = await contract.acceptOffer(offer.id as bigint);
+      const tx = await contract!.acceptOffer(offer.id as bigint);
       await tx.wait();
       toast.showSuccess("Success", "Offer accepted");
       window.location.reload();
@@ -464,10 +446,7 @@ export default function OfferDetailsPage({
 
     setSubmitting(true);
     try {
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      await contract.validateWork(escrow.offerId);
+      await contract!.validateWork(escrow.offerId);
       window.location.reload();
     } catch (error: unknown) {
       console.error("Validate work failed:", error);
@@ -489,12 +468,7 @@ export default function OfferDetailsPage({
         setConfirm((c) => ({ ...c, open: false }));
         setSubmitting(true);
         try {
-          const web3 = getBrowserProvider();
-          const signer = await web3.getSigner();
-          const contract = getMarketplaceContract(chainId, web3).connect(
-            signer
-          );
-          const tx = await contract.cancelOffer(offer.id as bigint);
+          const tx = await contract!.cancelOffer(offer.id as bigint);
           await tx.wait();
           window.location.reload();
         } catch (error: unknown) {
@@ -582,10 +556,7 @@ export default function OfferDetailsPage({
       };
       const cid = await uploadDisputeJson(payload);
 
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      await contract.openDisputeWithCID(escrow!.offerId, cid);
+      await contract!.openDisputeWithCID(escrow!.offerId, cid);
       toast.showSuccess("Success", "Dispute opened");
       window.location.reload();
     } catch (error: unknown) {
@@ -639,10 +610,7 @@ export default function OfferDetailsPage({
       };
       const cid = await uploadDisputeJson(payload);
 
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      await contract.appealDispute(escrow!.offerId, cid);
+      await contract!.appealDispute(escrow!.offerId, cid);
       toast.showSuccess("Success", "Appeal submitted");
       window.location.reload();
     } catch (error: unknown) {
@@ -670,10 +638,6 @@ export default function OfferDetailsPage({
 
     setLeavingReview(true);
     try {
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-
       const reviewPayload = {
         type: "review",
         offerId: String(offer.id),
@@ -685,7 +649,7 @@ export default function OfferDetailsPage({
       const json = JSON.stringify(reviewPayload);
       const reviewURI = `data:application/json;base64,${btoa(json)}`;
 
-      await contract.leaveReview(offer.id as bigint, rating, reviewURI);
+      await contract!.leaveReview(offer.id as bigint, rating, reviewURI);
       toast.showSuccess("Success", "Review submitted");
       window.location.reload();
     } catch (error: unknown) {
