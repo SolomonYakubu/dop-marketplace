@@ -321,6 +321,39 @@ export default function OffersPage() {
     [chain, address, chainId, loadOffers]
   );
 
+  const cancelOffer = useCallback(
+    async (offerId: bigint) => {
+      if (!chain || !address) return;
+
+      if (!confirm("Cancel this offer?")) return;
+
+      try {
+        setActionLoading(`cancel-${offerId.toString()}`);
+
+        const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
+          .ethereum;
+        if (!eth) throw new Error("Wallet provider not found");
+        const browserProvider = new ethers.BrowserProvider(eth);
+        const contract = getMarketplaceContract(chainId, browserProvider);
+        const signer = await browserProvider.getSigner();
+        contract.connect(signer);
+
+        const tx = await contract.cancelOffer(offerId);
+        await tx;
+
+        alert("Offer cancelled successfully!");
+        await loadOffers();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to cancel offer";
+        console.error("Failed to cancel offer:", e);
+        alert(msg);
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [chain, address, chainId, loadOffers]
+  );
+
   useEffect(() => {
     loadOffers();
   }, [loadOffers]);
@@ -688,6 +721,19 @@ export default function OffersPage() {
                           </button>
                         )}
 
+                      {!offer.accepted && !offer.cancelled && isSender && (
+                        <button
+                          onClick={() => cancelOffer(offer.id)}
+                          disabled={actionLoading === `cancel-${idStr}`}
+                          aria-busy={actionLoading === `cancel-${idStr}`}
+                          className="w-full h-10 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {actionLoading === `cancel-${idStr}`
+                            ? "Cancelling..."
+                            : "Cancel Offer"}
+                        </button>
+                      )}
+
                       {offer.escrow?.status === EscrowStatus.IN_PROGRESS && (
                         <div className="space-y-2">
                           {offer.escrow &&
@@ -719,6 +765,9 @@ export default function OffersPage() {
                           >
                             {actionLoading === `dispute-${idStr}`
                               ? "Opening..."
+                              : address?.toLowerCase() ===
+                                offer.escrow?.client.toLowerCase()
+                              ? "Request Refund"
                               : "Open Dispute"}
                           </button>
                         </div>

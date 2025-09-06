@@ -18,6 +18,8 @@ import {
 } from "@/lib/utils";
 import { Offer, EscrowStatus, Listing } from "@/types/marketplace";
 import type { ListingMetadata } from "@/types/marketplace";
+import { useToastContext } from "@/components/providers";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 // Explicit mapping to ensure correct label/colors regardless of imported enum ordering
 const ESCROW_STATUS_LABELS: Record<number, string> = {
@@ -46,6 +48,7 @@ const ERC20_ABI = [
 interface OfferWithEscrow extends Offer {
   escrowStatus?: EscrowStatus;
   canAccept?: boolean;
+  canCancel?: boolean;
 }
 
 // Page-local UI state shape built from shared types
@@ -74,6 +77,13 @@ export default function BriefDetailsPage({
   const [state, setState] = useState<ListingState | null>(null);
   const [offers, setOffers] = useState<OfferWithEscrow[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(false);
+  const toast = useToastContext();
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    title: string;
+    message?: React.ReactNode;
+    onConfirm?: () => void;
+  }>({ open: false, title: "" });
 
   // Offer form state
   const [showOfferForm, setShowOfferForm] = useState(false);
@@ -193,6 +203,10 @@ export default function BriefDetailsPage({
               !offer.accepted &&
               !offer.cancelled &&
               address?.toLowerCase() === state.creator.toLowerCase(),
+            canCancel:
+              !offer.accepted &&
+              !offer.cancelled &&
+              address?.toLowerCase() === offer.proposer.toLowerCase(),
           });
         } catch (err) {
           console.warn(`Failed to process offer ${offer.id.toString()}:`, err);
@@ -291,7 +305,7 @@ export default function BriefDetailsPage({
     if (!chain || !address || !state) return;
 
     if (!offerAmount || parseFloat(offerAmount) <= 0) {
-      alert("Please enter a valid offer amount");
+      toast.showError("Invalid amount", "Please enter a valid offer amount");
       return;
     }
 
@@ -344,14 +358,14 @@ export default function BriefDetailsPage({
       const tx = await contract.makeOffer(state.id, finalAmount, tokenAddress);
       await waitTx(tx, browserProvider);
 
-      alert("Offer submitted successfully!");
+      toast.showSuccess("Offer submitted");
       setOfferAmount("");
       setShowOfferForm(false);
       await loadOffers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to submit offer";
       console.error("Failed to submit offer:", e);
-      alert(msg);
+      toast.showError("Submit failed", msg);
     } finally {
       setSubmittingOffer(false);
     }
@@ -373,12 +387,35 @@ export default function BriefDetailsPage({
       const tx = await contract.acceptOffer(offerId);
       await waitTx(tx, browserProvider);
 
-      alert("Offer accepted successfully!");
+      toast.showSuccess("Offer accepted");
       await loadOffers();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to accept offer";
       console.error("Failed to accept offer:", e);
-      alert(msg);
+      toast.showError("Accept failed", msg);
+    }
+  }
+
+  async function cancelOffer(offerId: bigint) {
+    if (!chain || !address) return;
+    try {
+      const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
+        .ethereum;
+      if (!eth) throw new Error("Wallet provider not found");
+      const browserProvider = new ethers.BrowserProvider(eth);
+      const signer = await browserProvider.getSigner();
+      const contractRO = getMarketplaceContract(chainId, browserProvider);
+      const contract = contractRO.connect(signer);
+
+      const tx = await contract.cancelOffer(offerId);
+      await waitTx(tx, browserProvider);
+
+      toast.showSuccess("Offer cancelled");
+      await loadOffers();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to cancel offer";
+      console.error("Failed to cancel offer:", e);
+      toast.showError("Cancel failed", msg);
     }
   }
 
@@ -401,6 +438,19 @@ export default function BriefDetailsPage({
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        onCancel={() => setConfirm((c) => ({ ...c, open: false }))}
+        onConfirm={() => {
+          const fn = confirm.onConfirm;
+          setConfirm((c) => ({ ...c, open: false }));
+          fn?.();
+        }}
+        confirmText="Proceed"
+        danger
+      />
       <div className="flex items-center justify-between">
         <Link href="/briefs" className="text-sm text-gray-400 hover:text-white">
           ← Back to Briefs
@@ -636,6 +686,11 @@ export default function BriefDetailsPage({
                                 <span className={cls}>{label}</span>
                               ) : null;
                             })()}
+                            {offer.cancelled && (
+                              <span className={ESCROW_STATUS_CLASS[5]}>
+                                Cancelled
+                              </span>
+                            )}
                           </div>
                           <p className="text-gray-400 text-sm">
                             From {formatAddress(offer.proposer)} •{" "}
@@ -643,14 +698,32 @@ export default function BriefDetailsPage({
                           </p>
                         </div>
 
-                        {offer.canAccept && (
-                          <button
-                            onClick={() => acceptOffer(offer.id)}
-                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                          >
-                            Accept
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {offer.canAccept && (
+                            <button
+                              onClick={() => acceptOffer(offer.id)}
+                              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Accept
+                            </button>
+                          )}
+                          {offer.canCancel && (
+                            <button
+                              onClick={() =>
+                                setConfirm({
+                                  open: true,
+                                  title: "Cancel offer?",
+                                  message:
+                                    "Are you sure you want to cancel this offer?",
+                                  onConfirm: () => cancelOffer(offer.id),
+                                })
+                              }
+                              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}

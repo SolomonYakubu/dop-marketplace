@@ -12,6 +12,8 @@ import type {
   Review,
   ProfileMetadata,
   ListingMetadata,
+  Offer,
+  Escrow,
 } from "@/types/marketplace";
 import {
   toGatewayUrl,
@@ -29,6 +31,7 @@ import {
 import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { ToastContainer } from "@/components/Toast";
 import { LoadingButton } from "@/components/Loading";
+import { EscrowStatus } from "@/types/marketplace";
 
 // Types for UI state
 type PortfolioItem = { image?: string; title?: string; description?: string };
@@ -97,6 +100,13 @@ export default function GigDetailsPage({
   >([]);
   const [reviewsLoadingMore, setReviewsLoadingMore] = useState(false);
   const reviewsPageSize = 3;
+
+  // NEW: track current user's most recent offer on this gig
+  const [myOffer, setMyOffer] = useState<Offer | null>(null);
+  const [myEscrow, setMyEscrow] = useState<Escrow | null>(null);
+  const [offerActionLoading, setOfferActionLoading] = useState<
+    null | "cancel" | "dispute"
+  >(null);
 
   const toast = useToast();
   const { loading: submitting, execute } = useAsyncOperation();
@@ -393,6 +403,40 @@ export default function GigDetailsPage({
 
         setProfile(creatorProfile);
         setProfileMetadata(creatorProfileMeta);
+
+        // After listing is set, load current user's offer for this gig
+        if (address) {
+          try {
+            const PAGE = 100;
+            let offset = 0;
+            let latest: Offer | null = null;
+            for (let i = 0; i < 50; i++) {
+              const page = await contract.getOffersForListing(id, offset, PAGE);
+              if (!page || page.length === 0) break;
+              // filter to current user proposer
+              const mine = page
+                .filter(
+                  (o) => o.proposer?.toLowerCase?.() === address.toLowerCase()
+                )
+                .sort((a, b) => Number(b.createdAt - a.createdAt));
+              if (mine.length > 0 && !latest) latest = mine[0];
+              if (page.length < PAGE || latest) break;
+              offset += PAGE;
+            }
+            setMyOffer(latest);
+            if (latest && latest.accepted) {
+              try {
+                const esc = await contract.getEscrow(latest.id);
+                setMyEscrow(esc);
+              } catch {}
+            } else {
+              setMyEscrow(null);
+            }
+          } catch {}
+        } else {
+          setMyOffer(null);
+          setMyEscrow(null);
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load";
         setError(msg);
@@ -401,7 +445,7 @@ export default function GigDetailsPage({
       }
     }
     load();
-  }, [chainId, provider, resolvedParams.id]);
+  }, [chainId, provider, resolvedParams.id, address]);
 
   const handleBookService = async () => {
     if (!address || !state || submitting) return;
@@ -460,6 +504,47 @@ export default function GigDetailsPage({
         "Booking Successful",
         "Your booking request has been sent to the service provider."
       );
+    }
+  };
+
+  const handleCancelMyOffer = async () => {
+    if (!address || !myOffer || offerActionLoading) return;
+    if (!confirm("Cancel your pending offer?")) return;
+    try {
+      setOfferActionLoading("cancel");
+      const web3 = new ethers.BrowserProvider(window.ethereum);
+      const signer = await web3.getSigner();
+      const contract = getMarketplaceContract(chainId, web3).connect(signer);
+      const tx = await contract.cancelOffer(myOffer.id);
+      await tx;
+      toast.showSuccess("Offer cancelled", "Your offer has been cancelled.");
+      // refresh my offer
+      setMyOffer({ ...myOffer, cancelled: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to cancel offer";
+      toast.showError("Cancel failed", msg);
+    } finally {
+      setOfferActionLoading(null);
+    }
+  };
+
+  const handleDisputeMyOffer = async () => {
+    if (!address || !myOffer || !myEscrow || offerActionLoading) return;
+    // Client in GIG is proposer (current user) → Request Refund label
+    if (!confirm("Request refund by opening a dispute?")) return;
+    try {
+      setOfferActionLoading("dispute");
+      const web3 = new ethers.BrowserProvider(window.ethereum);
+      const signer = await web3.getSigner();
+      const contract = getMarketplaceContract(chainId, web3).connect(signer);
+      const tx = await contract.openDispute(myEscrow.offerId);
+      await tx;
+      toast.showSuccess("Dispute opened", "Refund request submitted.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to open dispute";
+      toast.showError("Dispute failed", msg);
+    } finally {
+      setOfferActionLoading(null);
     }
   };
 
@@ -887,6 +972,67 @@ export default function GigDetailsPage({
                 </div>
               )}
             </div>
+
+            {/* Your Offer (for current wallet) */}
+            {address && myOffer && (
+              <div className="container-panel p-6 space-y-3">
+                <h3 className="font-medium">Your Offer</h3>
+                <div className="text-sm text-gray-300">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs px-2 py-0.5 rounded border border-gray-800">
+                      #{String(myOffer.id)}
+                    </span>
+                    {myOffer.accepted ? (
+                      <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">
+                        Accepted
+                      </span>
+                    ) : myOffer.cancelled ? (
+                      <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
+                        Cancelled
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                        Pending
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Link
+                      href={`/offers/${String(myOffer.id)}`}
+                      className="text-blue-400 hover:underline"
+                    >
+                      View details
+                    </Link>
+                  </div>
+                </div>
+
+                {!myOffer.accepted && !myOffer.cancelled && (
+                  <button
+                    onClick={handleCancelMyOffer}
+                    disabled={offerActionLoading === "cancel"}
+                    className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {offerActionLoading === "cancel"
+                      ? "Cancelling..."
+                      : "Cancel Offer"}
+                  </button>
+                )}
+
+                {myOffer.accepted &&
+                  myEscrow &&
+                  myEscrow.status === EscrowStatus.IN_PROGRESS && (
+                    <button
+                      onClick={handleDisputeMyOffer}
+                      disabled={offerActionLoading === "dispute"}
+                      className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {offerActionLoading === "dispute"
+                        ? "Submitting..."
+                        : "Request Refund"}
+                    </button>
+                  )}
+              </div>
+            )}
 
             {/* On-chain Info */}
             <div className="container-panel p-6 space-y-3">

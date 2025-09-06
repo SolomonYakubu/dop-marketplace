@@ -106,6 +106,20 @@ interface ReviewStruct {
   timestamp: bigint;
 }
 
+// Dispute views
+interface DisputeHeaderStruct {
+  cid: string;
+  openedBy: string;
+  openedAt: bigint;
+  appealsCount: bigint;
+}
+
+interface DisputeAppealStruct {
+  by: string;
+  cid: string;
+  timestamp: bigint;
+}
+
 // ABI return union types and type guards to avoid `any`
 type ListingsBatchNamed = { out: ListingStruct[] };
 type ListingsBatchReturn = ListingStruct[] | ListingsBatchNamed;
@@ -1043,11 +1057,125 @@ export class MarketplaceContract {
     return mapped;
   }
 
+  // New: Dispute pagination via contract log
+  async getDisputedOffers(
+    offset: number,
+    limit: number,
+    opts?: CacheOptions
+  ): Promise<{ page: bigint[]; returned: number }> {
+    const key = this.cacheKey(["disputedOffers", offset, limit]);
+    const cached = !opts?.force
+      ? this.cacheGet<{ page: bigint[]; returned: number }>(key)
+      : undefined;
+    if (cached) return cached;
+    const ret = (await this.contract.getDisputedOffers(
+      BigInt(offset),
+      BigInt(limit)
+    )) as [bigint[], bigint] | { page: bigint[]; returned: bigint };
+    const page = Array.isArray(ret) ? (ret[0] as bigint[]) : ret.page;
+    const returned = Number(Array.isArray(ret) ? ret[1] : ret.returned);
+    const value = { page, returned };
+    this.cacheSet(key, value, opts?.ttlMs ?? 10_000);
+    return value;
+  }
+
+  async getDisputeHeader(
+    offerId: bigint,
+    opts?: CacheOptions
+  ): Promise<DisputeHeaderStruct> {
+    const key = this.cacheKey(["disputeHeader", offerId]);
+    const cached = !opts?.force
+      ? this.cacheGet<DisputeHeaderStruct>(key)
+      : undefined;
+    if (cached) return cached;
+    const ret = (await this.contract.getDisputeHeader(offerId)) as
+      | [string, string, bigint, bigint]
+      | DisputeHeaderStruct;
+    const header: DisputeHeaderStruct = Array.isArray(ret)
+      ? {
+          cid: ret[0],
+          openedBy: ret[1],
+          openedAt: ret[2],
+          appealsCount: ret[3],
+        }
+      : ret;
+    this.cacheSet(key, header, opts?.ttlMs ?? 30_000);
+    return header;
+  }
+
+  async getDisputeAppeal(
+    offerId: bigint,
+    index: number,
+    opts?: CacheOptions
+  ): Promise<DisputeAppealStruct> {
+    const key = this.cacheKey(["disputeAppeal", offerId, index]);
+    const cached = !opts?.force
+      ? this.cacheGet<DisputeAppealStruct>(key)
+      : undefined;
+    if (cached) return cached;
+    const ret = (await this.contract.getDisputeAppeal(
+      offerId,
+      BigInt(index)
+    )) as [string, string, bigint] | DisputeAppealStruct;
+    const appeal: DisputeAppealStruct = Array.isArray(ret)
+      ? { by: ret[0], cid: ret[1], timestamp: ret[2] }
+      : ret;
+    this.cacheSet(key, appeal, opts?.ttlMs ?? 30_000);
+    return appeal;
+  }
+
+  async getDisputeAppeals(
+    offerId: bigint,
+    opts?: CacheOptions
+  ): Promise<DisputeAppealStruct[]> {
+    const header = await this.getDisputeHeader(offerId, opts);
+    const count = Number(header.appealsCount ?? BigInt(0));
+    if (count === 0) return [];
+    const items = await Promise.all(
+      Array.from({ length: count }).map((_, i) =>
+        this.getDisputeAppeal(offerId, i, opts)
+      )
+    );
+    return items;
+  }
+
   async openDispute(offerId: bigint) {
     if (!this.signer) throw new Error("Signer required for write operations");
     const tx = await this.contract.openDispute(offerId);
     const receipt = await tx.wait();
-    this.invalidateCache([this.cacheKey(["escrow", offerId])]);
+    this.invalidateCache([
+      this.cacheKey(["escrow", offerId]),
+      /^(disputedOffers:)/,
+      this.cacheKey(["disputeHeader", offerId]),
+    ]);
+    return receipt;
+  }
+
+  // New: open dispute with metadata CID (JSON/IPFS or data URL)
+  async openDisputeWithCID(offerId: bigint, cid: string) {
+    if (!this.signer) throw new Error("Signer required for write operations");
+    const tx = await this.contract.openDisputeWithCID(offerId, cid);
+    const receipt = await tx.wait();
+    this.invalidateCache([
+      this.cacheKey(["escrow", offerId]),
+      /^(disputedOffers:)/,
+      this.cacheKey(["disputeHeader", offerId]),
+    ]);
+    return receipt;
+  }
+
+  // New: appeal an active dispute with a metadata CID
+  async appealDispute(offerId: bigint, cid: string) {
+    if (!this.signer) throw new Error("Signer required for write operations");
+    const tx = await this.contract.appealDispute(offerId, cid);
+    const receipt = await tx.wait();
+    this.invalidateCache([
+      this.cacheKey(["escrow", offerId]),
+      this.cacheKey(["disputeHeader", offerId]),
+      new RegExp(
+        `^${this.escapeRegex(this.cacheKey(["disputeAppeal", offerId]))}(:|$)`
+      ),
+    ]);
     return receipt;
   }
 
@@ -1055,7 +1183,11 @@ export class MarketplaceContract {
     if (!this.signer) throw new Error("Signer required for write operations");
     const tx = await this.contract.resolveDispute(offerId, outcome);
     const receipt = await tx.wait();
-    this.invalidateCache([this.cacheKey(["escrow", offerId])]);
+    this.invalidateCache([
+      this.cacheKey(["escrow", offerId]),
+      /^(disputedOffers:)/,
+      this.cacheKey(["disputeHeader", offerId]),
+    ]);
     return receipt;
   }
 
@@ -1267,6 +1399,34 @@ export class MarketplaceContract {
     return v;
   }
 
+  // New: owner and router getters for admin UI
+  async getOwner(opts?: CacheOptions): Promise<string> {
+    const key = "owner";
+    const cached = !opts?.force ? this.cacheGet<string>(key) : undefined;
+    if (cached) return cached;
+    const v = await this.contract.owner();
+    this.cacheSet(key, v, opts?.ttlMs ?? 60_000);
+    return v;
+  }
+
+  async getDexRouter(opts?: CacheOptions): Promise<string> {
+    const key = "dexRouter";
+    const cached = !opts?.force ? this.cacheGet<string>(key) : undefined;
+    if (cached) return cached;
+    const v = await this.contract.dexRouter();
+    this.cacheSet(key, v, opts?.ttlMs ?? 300_000);
+    return v;
+  }
+
+  async getWeth(opts?: CacheOptions): Promise<string> {
+    const key = "weth";
+    const cached = !opts?.force ? this.cacheGet<string>(key) : undefined;
+    if (cached) return cached;
+    const v = await this.contract.weth();
+    this.cacheSet(key, v, opts?.ttlMs ?? 300_000);
+    return v;
+  }
+
   // Admin functions (owner only)
   async pause() {
     if (!this.signer) throw new Error("Signer required for write operations");
@@ -1324,6 +1484,14 @@ export class MarketplaceContract {
     return receipt;
   }
 
+  async setTokens(dop: string, usdc: string) {
+    if (!this.signer) throw new Error("Signer required for write operations");
+    const tx = await this.contract.setTokens(dop, usdc);
+    const receipt = await tx.wait();
+    this.invalidateCache(["dopToken", "usdcToken"]);
+    return receipt;
+  }
+
   // Getters for contract internals (needed for event parsing)
   get contractAddress(): string {
     return this.contract.target as string;
@@ -1377,4 +1545,146 @@ export function getMarketplaceContract(
 export function getTokenAddresses(chainId: number) {
   const entry = TOKENS[chainId as keyof typeof TOKENS];
   return entry || { DOP: "", USDC: "" };
+}
+
+// EIP-1193 helpers to auto-switch/add the target chain in injected wallets (e.g., MetaMask)
+// These helpers are exported for use by the UI before instantiating/connecting the contract.
+
+type EIP1193Provider = {
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+};
+
+// Removed global Window augmentation to avoid conflicts with existing type definitions in the project
+
+type AddEthereumChainParameter = {
+  chainId: string; // 0x-prefixed hex string
+  chainName: string;
+  nativeCurrency?: { name: string; symbol: string; decimals: number };
+  rpcUrls: string[];
+  blockExplorerUrls?: string[];
+  iconUrls?: string[];
+};
+
+function getInjectedEthereum(): EIP1193Provider | undefined {
+  if (typeof window === "undefined") return undefined;
+  const maybe = (window as unknown as { ethereum?: unknown }).ethereum;
+  return maybe as EIP1193Provider | undefined;
+}
+
+function toHexChainId(chainId: number) {
+  return "0x" + chainId.toString(16);
+}
+
+function chainParamsFor(chainId: number): AddEthereumChainParameter {
+  const id = String(chainId);
+  const name =
+    process.env[`NEXT_PUBLIC_CHAIN_NAME_${id}`] ||
+    process.env.NEXT_PUBLIC_CHAIN_NAME ||
+    `Chain ${id}`;
+  const symbol =
+    process.env[`NEXT_PUBLIC_CHAIN_SYMBOL_${id}`] ||
+    process.env.NEXT_PUBLIC_CHAIN_SYMBOL ||
+    "ETH";
+  const rpc =
+    process.env[`NEXT_PUBLIC_RPC_URL_${id}`] ||
+    process.env.NEXT_PUBLIC_RPC_URL ||
+    "";
+  const explorer =
+    process.env[`NEXT_PUBLIC_EXPLORER_URL_${id}`] ||
+    process.env.NEXT_PUBLIC_EXPLORER_URL ||
+    "";
+
+  if (!rpc) {
+    throw new Error(
+      `Missing RPC URL for chain ${chainId}. Define NEXT_PUBLIC_RPC_URL_${id} or NEXT_PUBLIC_RPC_URL in .env.local`
+    );
+  }
+
+  return {
+    chainId: toHexChainId(chainId),
+    chainName: name,
+    nativeCurrency: { name: symbol, symbol, decimals: 18 },
+    rpcUrls: [rpc],
+    blockExplorerUrls: explorer ? [explorer] : [],
+  };
+}
+
+function asEthersEip1193(p: EIP1193Provider): ethers.Eip1193Provider {
+  return p as unknown as ethers.Eip1193Provider;
+}
+
+export async function ensureChain(
+  targetChainId: number,
+  paramsOverride?: Partial<AddEthereumChainParameter>
+): Promise<void> {
+  const eth = getInjectedEthereum();
+  if (!eth) throw new Error("No injected wallet found (window.ethereum)");
+
+  const hexId = toHexChainId(targetChainId);
+  try {
+    await eth.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: hexId }],
+    });
+    return;
+  } catch (err: unknown) {
+    const e = err as {
+      code?: number;
+      data?: { originalError?: { code?: number } };
+    };
+    const code = e?.code ?? e?.data?.originalError?.code;
+    if (code === 4902) {
+      // Unrecognized chain - add then switch
+      const params = {
+        ...chainParamsFor(targetChainId),
+        ...paramsOverride,
+      } as AddEthereumChainParameter;
+      // Ensure chainId is the correct hex string even if override provided
+      params.chainId = hexId;
+
+      await eth.request({
+        method: "wallet_addEthereumChain",
+        params: [params],
+      });
+      await eth.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: hexId }],
+      });
+      return;
+    }
+    if (code === 4001) throw err; // User rejected
+    throw err;
+  }
+}
+
+export async function connectAndEnsureChain(targetChainId: number) {
+  const eth = getInjectedEthereum();
+  if (!eth) throw new Error("No injected wallet found (window.ethereum)");
+
+  // Request account access
+  await eth.request({ method: "eth_requestAccounts" });
+
+  // Use "any" so provider stays usable across network changes
+  let provider = new ethers.BrowserProvider(asEthersEip1193(eth), "any");
+  const net = await provider.getNetwork();
+
+  if (Number(net.chainId) !== targetChainId) {
+    await ensureChain(targetChainId);
+    provider = new ethers.BrowserProvider(asEthersEip1193(eth), "any");
+  }
+
+  const signer = await provider.getSigner();
+  return { provider, signer };
+}
+
+// Convenience initializer: ensure wallet is on the correct chain, then
+// return a connected MarketplaceContract using the injected wallet.
+export async function createMarketplaceWithWallet(
+  contractAddress: string,
+  targetChainId: number
+): Promise<MarketplaceContract> {
+  const { provider, signer } = await connectAndEnsureChain(targetChainId);
+  const instance = new MarketplaceContract(contractAddress, provider);
+  instance.connect(signer);
+  return instance;
 }

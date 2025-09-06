@@ -119,6 +119,29 @@ export default function OfferDetailsPage({
   const [reviewText, setReviewText] = useState<string>("");
   const [leavingReview, setLeavingReview] = useState<boolean>(false);
 
+  // Dispute state
+  const [disputeHeader, setDisputeHeader] = useState<{
+    cid: string;
+    openedBy: string;
+    openedAt: bigint;
+    appealsCount: bigint;
+  } | null>(null);
+  const [appeals, setAppeals] = useState<
+    Array<{ by: string; cid: string; timestamp: bigint }>
+  >([]);
+
+  // Dispute form states
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeFiles, setDisputeFiles] = useState<File[]>([]);
+  const [openingDispute, setOpeningDispute] = useState(false);
+
+  // Appeal form states
+  const [showAppealForm, setShowAppealForm] = useState(false);
+  const [appealReason, setAppealReason] = useState("");
+  const [appealFiles, setAppealFiles] = useState<File[]>([]);
+  const [appealing, setAppealing] = useState(false);
+
   const chainId = chain?.id ?? 11124;
   const provider = useMemo(
     () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
@@ -278,6 +301,26 @@ export default function OfferDetailsPage({
             setCanReview(false);
           }
         } catch {}
+
+        // Dispute header + appeals if disputed/resolved
+        try {
+          if (
+            escrowData &&
+            (escrowData.status === EscrowStatus.DISPUTED ||
+              escrowData.status === EscrowStatus.RESOLVED)
+          ) {
+            const header = await contract.getDisputeHeader(offerId);
+            setDisputeHeader(header);
+            const allAppeals = await contract.getDisputeAppeals(offerId);
+            setAppeals(allAppeals);
+          } else {
+            setDisputeHeader(null);
+            setAppeals([]);
+          }
+        } catch {
+          setDisputeHeader(null);
+          setAppeals([]);
+        }
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load offer";
         setError(msg);
@@ -353,28 +396,16 @@ export default function OfferDetailsPage({
         }`
       );
     } catch (error: unknown) {
-      console.error("Approve failed:", error);
+      console.error("Token approval failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Approve failed: " + msg);
+      alert("Failed to approve tokens: " + msg);
     } finally {
       setApproving(false);
     }
   };
 
   const handleAcceptOffer = async () => {
-    if (!offer || !address || submitting || !listing) return;
-
-    // For ERC20, ensure allowance present when client pays (BRIEF) or when client is proposer (GIG)
-    if (!isEth && needsApproval) {
-      // If user is provider on a GIG, the client must approve first.
-      if (!isClientWallet) {
-        alert("Client must approve token allowance before acceptance.");
-        return;
-      }
-      // If user is client, prompt to approve first.
-      alert("Please approve tokens before accepting.");
-      return;
-    }
+    if (!offer || !listing || !clientAddress || submitting) return;
 
     setSubmitting(true);
     try {
@@ -382,10 +413,24 @@ export default function OfferDetailsPage({
       const signer = await web3.getSigner();
       const contract = getMarketplaceContract(chainId, web3).connect(signer);
 
-      const value = isEth ? (offer.amount as bigint) : undefined;
-      const tx = await contract.acceptOffer(offer.id, value);
-      await tx.wait();
+      // For ETH payments, just send the value with the transaction
+      if (isEth) {
+        const tx = await contract.acceptOffer(offer.id as bigint, offer.amount);
+        await tx.wait();
+        alert("Offer accepted");
+        window.location.reload();
+        return;
+      }
 
+      // For token payments, we need to ensure approval first
+      if (needsApproval) {
+        alert("Token approval is required before accepting the offer.");
+        return;
+      }
+
+      const tx = await contract.acceptOffer(offer.id as bigint);
+      await tx.wait();
+      alert("Offer accepted");
       window.location.reload();
     } catch (error: unknown) {
       console.error("Accept offer failed:", error);
@@ -415,27 +460,149 @@ export default function OfferDetailsPage({
     }
   };
 
-  const handleOpenDispute = async () => {
-    if (!escrow || !address || submitting) return;
+  const handleCancelOffer = async () => {
+    if (!offer || !isProposer || submitting) return;
 
-    const reason = prompt("Please enter the reason for dispute:");
-    if (!reason) return;
+    if (!confirm("Cancel this offer?")) return;
 
     setSubmitting(true);
     try {
       const web3 = getBrowserProvider();
       const signer = await web3.getSigner();
       const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      await contract.openDispute(escrow.offerId);
+      const tx = await contract.cancelOffer(offer.id as bigint);
+      await tx.wait();
       window.location.reload();
     } catch (error: unknown) {
-      console.error("Open dispute failed:", error);
+      console.error("Cancel offer failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to open dispute: " + msg);
+      alert("Failed to cancel offer: " + msg);
     } finally {
       setSubmitting(false);
     }
   };
+
+  // Upload a single file to IPFS via our API route and return an ipfs:// URI
+  async function uploadFileToIpfs(file: File): Promise<string> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/ipfs", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "IPFS upload failed");
+    return `ipfs://${data.cid}`;
+  }
+
+  // Build and upload a dispute/appeal JSON payload. Returns raw CID (no ipfs://)
+  async function uploadDisputeJson(
+    payload: Record<string, unknown>
+  ): Promise<string> {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const file = new File([blob], "dispute.json", { type: "application/json" });
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/ipfs", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || "Upload failed");
+    return String(data.cid);
+  }
+
+  const handleOpenDispute = async () => {
+    // Toggle the dispute form instead of opening immediately (CID flow)
+    setShowDisputeForm((v) => !v);
+  };
+
+  async function handleSubmitDisputeWithCID() {
+    if (!escrow || !offer || !address || openingDispute) return;
+    if (!disputeReason.trim() && disputeFiles.length === 0) {
+      if (!confirm("Submit dispute without reason or attachments?")) return;
+    }
+
+    try {
+      setOpeningDispute(true);
+      // Upload attachments (optional)
+      const attachmentUris: string[] = [];
+      for (const file of disputeFiles) {
+        try {
+          const uri = await uploadFileToIpfs(file);
+          attachmentUris.push(uri);
+        } catch (e) {
+          console.warn("Failed to upload an attachment:", e);
+        }
+      }
+
+      const payload = {
+        type: "dispute",
+        offerId: String(offer.id),
+        listingId: String(offer.listingId),
+        author: address,
+        role: isClientWallet ? "client" : "provider",
+        reason: disputeReason,
+        attachments: attachmentUris,
+        createdAt: Date.now(),
+      };
+      const cid = await uploadDisputeJson(payload);
+
+      const web3 = getBrowserProvider();
+      const signer = await web3.getSigner();
+      const contract = getMarketplaceContract(chainId, web3).connect(signer);
+      await contract.openDisputeWithCID(escrow.offerId, cid);
+      alert("Dispute opened");
+      window.location.reload();
+    } catch (error: unknown) {
+      console.error("Open dispute with CID failed:", error);
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      alert("Failed to open dispute: " + msg);
+    } finally {
+      setOpeningDispute(false);
+    }
+  }
+
+  async function handleSubmitAppealWithCID() {
+    if (!escrow || !offer || !address || appealing) return;
+    if (!appealReason.trim() && appealFiles.length === 0) {
+      if (!confirm("Submit appeal without reason or attachments?")) return;
+    }
+
+    try {
+      setAppealing(true);
+      const attachmentUris: string[] = [];
+      for (const file of appealFiles) {
+        try {
+          const uri = await uploadFileToIpfs(file);
+          attachmentUris.push(uri);
+        } catch (e) {
+          console.warn("Failed to upload an attachment:", e);
+        }
+      }
+
+      const payload = {
+        type: "appeal",
+        offerId: String(offer.id),
+        listingId: String(offer.listingId),
+        author: address,
+        role: isClientWallet ? "client" : "provider",
+        reason: appealReason,
+        attachments: attachmentUris,
+        createdAt: Date.now(),
+      };
+      const cid = await uploadDisputeJson(payload);
+
+      const web3 = getBrowserProvider();
+      const signer = await web3.getSigner();
+      const contract = getMarketplaceContract(chainId, web3).connect(signer);
+      await contract.appealDispute(escrow.offerId, cid);
+      alert("Appeal submitted");
+      window.location.reload();
+    } catch (error: unknown) {
+      console.error("Appeal with CID failed:", error);
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      alert("Failed to submit appeal: " + msg);
+    } finally {
+      setAppealing(false);
+    }
+  }
 
   async function handleLeaveReview() {
     if (!offer || !address || leavingReview) return;
@@ -485,6 +652,7 @@ export default function OfferDetailsPage({
 
     return (
       <div className="space-y-3">
+        {/* Accept flow */}
         {canAccept && (
           <>
             {!isEth && (
@@ -547,6 +715,18 @@ export default function OfferDetailsPage({
           </>
         )}
 
+        {/* Proposer-side cancel for pending offers */}
+        {!offer?.accepted && !offer?.cancelled && isProposer && (
+          <button
+            onClick={handleCancelOffer}
+            disabled={submitting}
+            className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? "Cancelling..." : "Cancel Offer"}
+          </button>
+        )}
+
+        {/* Validation during escrow */}
         {canValidate && (
           <button
             onClick={handleValidateWork}
@@ -557,14 +737,126 @@ export default function OfferDetailsPage({
           </button>
         )}
 
+        {/* Dispute / Refund */}
         {canDispute && isClientWallet && (
           <button
             onClick={handleOpenDispute}
-            disabled={submitting}
+            disabled={openingDispute}
             className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
           >
-            {submitting ? "Opening Dispute..." : "Open Dispute"}
+            {openingDispute ? "Preparing..." : "Request Refund"}
           </button>
+        )}
+        {canDispute && !isClientWallet && isProviderWallet && (
+          <button
+            onClick={handleOpenDispute}
+            disabled={openingDispute}
+            className="w-full px-4 py-2 border border-red-500 text-red-400 rounded hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+          >
+            {openingDispute ? "Preparing..." : "Open Dispute"}
+          </button>
+        )}
+
+        {/* Dispute form (toggle) */}
+        {showDisputeForm && (
+          <div className="mt-3 rounded border border-red-900 p-3 bg-red-950/20">
+            <div className="text-sm font-medium text-red-300 mb-2">
+              Open Dispute
+            </div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Reason (optional)
+            </label>
+            <textarea
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              rows={3}
+              placeholder={
+                isClientWallet
+                  ? "Describe why you request a refund..."
+                  : "Describe the issue..."
+              }
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
+            />
+            <label className="block text-xs text-gray-400 mb-1">
+              Attachments (optional)
+            </label>
+            <input
+              type="file"
+              multiple
+              onChange={(e) =>
+                setDisputeFiles(Array.from(e.target.files || []))
+              }
+              className="w-full text-xs text-gray-300"
+            />
+            {disputeFiles.length > 0 && (
+              <div className="text-xs text-gray-400 mt-1">
+                {disputeFiles.length} file(s) selected
+              </div>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleSubmitDisputeWithCID}
+                disabled={openingDispute}
+                className="flex-1 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm"
+              >
+                {openingDispute ? "Submitting..." : "Submit Dispute"}
+              </button>
+              <button
+                onClick={() => setShowDisputeForm(false)}
+                className="px-3 py-2 border border-white/10 rounded text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Appeal form (toggle) */}
+        {showAppealForm && (
+          <div className="mt-3 rounded border border-yellow-900 p-3 bg-yellow-950/10">
+            <div className="text-sm font-medium text-yellow-300 mb-2">
+              Submit Appeal
+            </div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Reason (optional)
+            </label>
+            <textarea
+              value={appealReason}
+              onChange={(e) => setAppealReason(e.target.value)}
+              rows={3}
+              placeholder="Provide additional context/evidence..."
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
+            />
+            <label className="block text-xs text-gray-400 mb-1">
+              Attachments (optional)
+            </label>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setAppealFiles(Array.from(e.target.files || []))}
+              className="w-full text-xs text-gray-300"
+            />
+            {appealFiles.length > 0 && (
+              <div className="text-xs text-gray-400 mt-1">
+                {appealFiles.length} file(s) selected
+              </div>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleSubmitAppealWithCID}
+                disabled={appealing}
+                className="flex-1 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm"
+              >
+                {appealing ? "Submitting..." : "Submit Appeal"}
+              </button>
+              <button
+                onClick={() => setShowAppealForm(false)}
+                className="px-3 py-2 border border-white/10 rounded text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
 
         {!isListingCreator && !isProposer && (
@@ -657,6 +949,163 @@ export default function OfferDetailsPage({
             </div>
           )}
         </div>
+      </div>
+    );
+  };
+
+  const renderDisputeSection = () => {
+    if (!escrow) return null;
+
+    const showDetails =
+      escrow.status === EscrowStatus.DISPUTED ||
+      escrow.status === EscrowStatus.RESOLVED;
+
+    if (!showDetails && !showAppealForm) return null;
+
+    const canAppeal =
+      showDetails &&
+      !!address &&
+      !!disputeHeader &&
+      address.toLowerCase() !== disputeHeader.openedBy.toLowerCase() &&
+      (isClientWallet || isProviderWallet) &&
+      escrow.status === EscrowStatus.DISPUTED;
+
+    return (
+      <div className="container-panel p-6">
+        <h3 className="font-medium mb-3">Dispute</h3>
+
+        {showDetails && (
+          <div className="rounded border border-white/10 p-3 text-sm">
+            {disputeHeader ? (
+              <div className="space-y-1">
+                <div className="flex flex-wrap gap-4 text-gray-300">
+                  <span>
+                    Opened By: {formatAddress(disputeHeader.openedBy)}
+                  </span>
+                  <span>
+                    Opened At:{" "}
+                    {new Date(
+                      Number(disputeHeader.openedAt) * 1000
+                    ).toLocaleString()}
+                  </span>
+                  {disputeHeader.cid && (
+                    <span>
+                      CID:{" "}
+                      <a
+                        className="underline decoration-dotted"
+                        href={`https://ipfs.io/ipfs/${disputeHeader.cid}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {disputeHeader.cid.slice(0, 18)}…
+                      </a>
+                    </span>
+                  )}
+                  <span>Appeals: {String(disputeHeader.appealsCount)}</span>
+                </div>
+
+                <div className="mt-3">
+                  <div className="font-medium mb-1">Appeals</div>
+                  {appeals.length === 0 ? (
+                    <div className="text-xs text-gray-400">
+                      No appeals recorded.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {appeals.map((a, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded border border-white/10 p-2 text-xs text-gray-300"
+                        >
+                          <div className="flex flex-wrap items-center gap-3">
+                            <span>By: {formatAddress(a.by)}</span>
+                            <span>
+                              At:{" "}
+                              {new Date(
+                                Number(a.timestamp) * 1000
+                              ).toLocaleString()}
+                            </span>
+                            <span>
+                              CID:{" "}
+                              <a
+                                className="underline decoration-dotted"
+                                href={`https://ipfs.io/ipfs/${a.cid}`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {a.cid.slice(0, 18)}…
+                              </a>
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">
+                Loading dispute details…
+              </div>
+            )}
+          </div>
+        )}
+
+        {canAppeal && !showAppealForm && (
+          <button
+            onClick={() => setShowAppealForm(true)}
+            className="mt-3 px-4 py-2 border border-yellow-600 text-yellow-300 rounded hover:bg-yellow-600/10 text-sm"
+          >
+            Appeal
+          </button>
+        )}
+
+        {showAppealForm && (
+          <div className="mt-3 rounded border border-yellow-900 p-3 bg-yellow-950/10">
+            <div className="text-sm font-medium text-yellow-300 mb-2">
+              Submit Appeal
+            </div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Reason (optional)
+            </label>
+            <textarea
+              value={appealReason}
+              onChange={(e) => setAppealReason(e.target.value)}
+              rows={3}
+              placeholder="Provide additional context/evidence..."
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
+            />
+            <label className="block text-xs text-gray-400 mb-1">
+              Attachments (optional)
+            </label>
+            <input
+              type="file"
+              multiple
+              onChange={(e) => setAppealFiles(Array.from(e.target.files || []))}
+              className="w-full text-xs text-gray-300"
+            />
+            {appealFiles.length > 0 && (
+              <div className="text-xs text-gray-400 mt-1">
+                {appealFiles.length} file(s) selected
+              </div>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleSubmitAppealWithCID}
+                disabled={appealing}
+                className="flex-1 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm"
+              >
+                {appealing ? "Submitting..." : "Submit Appeal"}
+              </button>
+              <button
+                onClick={() => setShowAppealForm(false)}
+                className="px-3 py-2 border border-white/10 rounded text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -976,6 +1425,9 @@ export default function OfferDetailsPage({
 
             {/* Escrow Progress */}
             {renderEscrowProgress()}
+
+            {/* Dispute Section */}
+            {renderDisputeSection()}
 
             {/* Reviews */}
             {renderReviews()}

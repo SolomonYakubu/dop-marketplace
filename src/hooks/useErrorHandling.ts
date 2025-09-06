@@ -53,7 +53,7 @@ export function useToast() {
 }
 
 // Error handling utility
-export function handleContractError(error: any): string {
+export function handleContractError(error: { message: string }): string {
   if (error?.message) {
     // Extract meaningful error messages from common Web3 errors
     const message = error.message;
@@ -106,8 +106,8 @@ export function useAsyncOperation() {
     try {
       const result = await operation();
       return result;
-    } catch (err: any) {
-      const errorMessage = handleContractError(err);
+    } catch (err: { message: string } | unknown) {
+      const errorMessage = handleContractError(err as { message: string });
       setError(errorMessage);
       return null;
     } finally {

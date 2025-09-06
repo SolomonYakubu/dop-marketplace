@@ -428,3 +428,142 @@ export function getBadgeLabel(badge: Badge) {
       return "Unknown Badge";
   }
 }
+
+// ------------------------------------------------------------
+// IPFS JSON helper with concurrency + caching (for dispute/appeal metadata)
+// ------------------------------------------------------------
+
+const __ipfsJsonCache: Map<string, { ts: number; data: unknown }> = new Map();
+const __ipfsInFlight: Map<string, Promise<unknown>> = new Map();
+
+function buildIpfsCandidateUrls(cidOrUri: string): string[] {
+  const urls: string[] = [];
+  // Direct HTTP(S)
+  if (/^https?:\/\//i.test(cidOrUri)) {
+    urls.push(cidOrUri);
+  }
+  // Attempt to normalize to gateway URL if not already http(s)
+  const gwPrimary = toGatewayUrl(cidOrUri);
+  if (gwPrimary) urls.push(gwPrimary);
+
+  // Extract CID/path for common gateways
+  let cidPath = cidOrUri.trim();
+  if (cidPath.startsWith('ipfs://')) cidPath = cidPath.slice(7);
+  cidPath = cidPath.replace(/^ipfs\//i, '');
+  cidPath = cidPath.replace(/^\/?ipfs\//i, '');
+
+  if (cidPath && !/^https?:\/\//i.test(cidPath)) {
+    const bases = [
+      process.env.NEXT_PUBLIC_IPFS_GATEWAY?.replace(/\/$/, ''),
+      'https://gateway.pinata.cloud/ipfs',
+      'https://ipfs.io/ipfs',
+      'https://cloudflare-ipfs.com/ipfs',
+      'https://dweb.link/ipfs',
+    ].filter(Boolean) as string[];
+    for (const b of bases) {
+      urls.push(`${b}/${cidPath}`);
+    }
+  }
+  // Deduplicate preserving order
+  const seen = new Set<string>();
+  const dedup: string[] = [];
+  for (const u of urls) {
+    if (!seen.has(u)) {
+      seen.add(u);
+      dedup.push(u);
+    }
+  }
+  return dedup;
+}
+
+function promiseAny<T>(promises: Promise<T>[]): Promise<T> {
+  // Lightweight polyfill
+  return new Promise<T>((resolve, reject) => {
+    let rejected = 0;
+    const errors: unknown[] = [];
+    const total = promises.length;
+    if (total === 0) {
+      reject(new Error('No promises'));
+      return;
+    }
+    promises.forEach((p) => {
+      p.then(resolve).catch((e) => {
+        rejected++;
+        errors.push(e);
+        if (rejected === total) {
+          reject(errors);
+        }
+      });
+    });
+  });
+}
+
+async function fetchAndParseJson(url: string, timeoutMs: number): Promise<unknown> {
+  const res = await fetchWithTimeout(url, timeoutMs);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    return await res.json();
+  }
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // If not JSON we signal failure so other gateways can try
+    throw new Error('Non-JSON response');
+  }
+}
+
+export async function fetchIpfsJson(
+  cidOrUri: string,
+  opts?: { timeoutMs?: number; cacheTtlMs?: number }
+): Promise<unknown> {
+  const key = cidOrUri;
+  const timeoutMs = opts?.timeoutMs ?? 5500;
+  const cacheTtlMs = opts?.cacheTtlMs ?? 5 * 60 * 1000; // 5 minutes
+
+  // Cache hit
+  const cached = __ipfsJsonCache.get(key);
+  const now = Date.now();
+  if (cached && now - cached.ts < cacheTtlMs) {
+    return cached.data;
+  }
+
+  // In-flight de-dupe
+  const inflight = __ipfsInFlight.get(key);
+  if (inflight) return inflight;
+
+  const attempt = (async () => {
+    const candidates = buildIpfsCandidateUrls(cidOrUri);
+    // Strategy: fire first three concurrently (or all if fewer), then fall back sequentially if they all fail.
+    const primaryBatch = candidates.slice(0, 3).map((u) => fetchAndParseJson(u, timeoutMs));
+    try {
+      const data = await promiseAny(primaryBatch);
+      __ipfsJsonCache.set(key, { ts: Date.now(), data });
+      return data;
+    } catch {
+      // Try remaining sequentially
+      for (const url of candidates.slice(3)) {
+        try {
+          const data = await fetchAndParseJson(url, timeoutMs);
+          __ipfsJsonCache.set(key, { ts: Date.now(), data });
+          return data;
+        } catch {
+          // continue
+        }
+      }
+      throw new Error('All IPFS gateways failed');
+    } finally {
+      __ipfsInFlight.delete(key);
+    }
+  })();
+
+  __ipfsInFlight.set(key, attempt);
+  return attempt;
+}
+
+// Helper to manually clear cache if needed
+export function clearIpfsJsonCache() {
+  __ipfsJsonCache.clear();
+  __ipfsInFlight.clear();
+}
