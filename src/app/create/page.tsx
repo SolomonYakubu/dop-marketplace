@@ -8,11 +8,13 @@ import { ListingType } from "@/types/marketplace";
 import type { ListingMetadata } from "@/types/marketplace";
 import { useSearchParams } from "next/navigation";
 import { formatAddress } from "@/lib/utils";
+import { useToastContext } from "@/components/providers";
 
 export default function CreatePage() {
   const search = useSearchParams();
   const preType = search?.get("type") || search?.get("prefill") || "";
   const target = search?.get("to") || "";
+  const toast = useToastContext();
 
   const [type, setType] = useState<"brief" | "gig">(
     preType === "gig" ? "gig" : "brief"
@@ -34,9 +36,14 @@ export default function CreatePage() {
   }
 
   async function onSubmit() {
-    if (!chain) return alert("Connect your wallet");
-    if (!title.trim() || !description.trim())
-      return alert("Title and description required");
+    if (!chain) {
+      toast.showError("Connect Wallet", "Connect your wallet");
+      return;
+    }
+    if (!title.trim() || !description.trim()) {
+      toast.showError("Missing Fields", "Title and description required");
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -82,13 +89,13 @@ export default function CreatePage() {
       const listingType = type === "brief" ? 0 : 1; // BRIEF/GIG
       await contract.createListing(listingType, BigInt(category), metadataUri);
 
-      alert("Listing created");
+      toast.showSuccess("Success", "Listing created");
       setTitle("");
       setDescription("");
       setCoverFile(null);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to create listing";
-      alert(msg);
+      toast.showError("Error", msg);
     } finally {
       setSubmitting(false);
     }

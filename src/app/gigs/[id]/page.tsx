@@ -32,6 +32,7 @@ import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { ToastContainer } from "@/components/Toast";
 import { LoadingButton } from "@/components/Loading";
 import { EscrowStatus } from "@/types/marketplace";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 // Types for UI state
 type PortfolioItem = { image?: string; title?: string; description?: string };
@@ -110,6 +111,14 @@ export default function GigDetailsPage({
 
   const toast = useToast();
   const { loading: submitting, execute } = useAsyncOperation();
+
+  // Confirmation modal state
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    title: string;
+    message?: React.ReactNode;
+    action?: () => Promise<void>;
+  }>({ open: false, title: "", message: undefined, action: undefined });
 
   const chainId = chain?.id ?? 11124;
   const provider = useMemo(
@@ -509,43 +518,64 @@ export default function GigDetailsPage({
 
   const handleCancelMyOffer = async () => {
     if (!address || !myOffer || offerActionLoading) return;
-    if (!confirm("Cancel your pending offer?")) return;
-    try {
-      setOfferActionLoading("cancel");
-      const web3 = new ethers.BrowserProvider(window.ethereum);
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      const tx = await contract.cancelOffer(myOffer.id);
-      await tx;
-      toast.showSuccess("Offer cancelled", "Your offer has been cancelled.");
-      // refresh my offer
-      setMyOffer({ ...myOffer, cancelled: true });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to cancel offer";
-      toast.showError("Cancel failed", msg);
-    } finally {
-      setOfferActionLoading(null);
-    }
+    setConfirm({
+      open: true,
+      title: "Cancel Offer",
+      message: "Cancel your pending offer?",
+      action: async () => {
+        setConfirm((c) => ({ ...c, open: false }));
+        try {
+          setOfferActionLoading("cancel");
+          const web3 = new ethers.BrowserProvider(window.ethereum);
+          const signer = await web3.getSigner();
+          const contract = getMarketplaceContract(chainId, web3).connect(
+            signer
+          );
+          const tx = await contract.cancelOffer(myOffer.id);
+          await tx;
+          toast.showSuccess(
+            "Offer cancelled",
+            "Your offer has been cancelled."
+          );
+          // refresh my offer
+          setMyOffer({ ...myOffer, cancelled: true });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Failed to cancel offer";
+          toast.showError("Cancel failed", msg);
+        } finally {
+          setOfferActionLoading(null);
+        }
+      },
+    });
   };
 
   const handleDisputeMyOffer = async () => {
     if (!address || !myOffer || !myEscrow || offerActionLoading) return;
     // Client in GIG is proposer (current user) → Request Refund label
-    if (!confirm("Request refund by opening a dispute?")) return;
-    try {
-      setOfferActionLoading("dispute");
-      const web3 = new ethers.BrowserProvider(window.ethereum);
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      const tx = await contract.openDispute(myEscrow.offerId);
-      await tx;
-      toast.showSuccess("Dispute opened", "Refund request submitted.");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to open dispute";
-      toast.showError("Dispute failed", msg);
-    } finally {
-      setOfferActionLoading(null);
-    }
+    setConfirm({
+      open: true,
+      title: "Request Refund",
+      message: "Request refund by opening a dispute?",
+      action: async () => {
+        setConfirm((c) => ({ ...c, open: false }));
+        try {
+          setOfferActionLoading("dispute");
+          const web3 = new ethers.BrowserProvider(window.ethereum);
+          const signer = await web3.getSigner();
+          const contract = getMarketplaceContract(chainId, web3).connect(
+            signer
+          );
+          const tx = await contract.openDispute(myEscrow.offerId);
+          await tx;
+          toast.showSuccess("Dispute opened", "Refund request submitted.");
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Failed to open dispute";
+          toast.showError("Dispute failed", msg);
+        } finally {
+          setOfferActionLoading(null);
+        }
+      },
+    });
   };
 
   const renderPortfolio = () => {
@@ -1078,6 +1108,16 @@ export default function GigDetailsPage({
       ) : null}
 
       {renderBookingForm()}
+
+      <ConfirmModal
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        onCancel={() => setConfirm((c) => ({ ...c, open: false }))}
+        onConfirm={() => confirm.action?.()}
+        confirmText="Proceed"
+        danger={true}
+      />
     </div>
   );
 }

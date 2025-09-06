@@ -25,6 +25,8 @@ import {
   getRpcUrl,
   toGatewayUrl,
 } from "@/lib/utils";
+import { useToastContext } from "@/components/providers";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 // Helpers for escrow labels (kept local; not in shared utils yet)
 function getEscrowStatusLabel(status: EscrowStatus) {
@@ -91,11 +93,20 @@ export default function OfferDetailsPage({
 }) {
   const resolvedParams = use(params);
   const { address, chain } = useAccount();
+  const toast = useToastContext();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [offer, setOffer] = useState<Offer | null>(null);
   const [escrow, setEscrow] = useState<Escrow | null>(null);
   const [listing, setListing] = useState<Listing | null>(null);
+
+  // Confirmation modal state
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    title: string;
+    message?: React.ReactNode;
+    action?: () => Promise<void>;
+  }>({ open: false, title: "", message: undefined, action: undefined });
   const [listingMetadata, setListingMetadata] = useState<
     ListingMetadata | undefined
   >(undefined);
@@ -362,7 +373,10 @@ export default function OfferDetailsPage({
   const handleApprove = async () => {
     if (!offer || !listing || !clientAddress || approving) return;
     if (!isClientWallet) {
-      alert("Only the paying client can approve tokens.");
+      toast.showError(
+        "Not Authorized",
+        "Only the paying client can approve tokens."
+      );
       return;
     }
     if (isEth) return;
@@ -379,7 +393,8 @@ export default function OfferDetailsPage({
       const tx = await token.approve(contract.contractAddress, offer.amount);
       await tx.wait();
       await refreshAllowance();
-      alert(
+      toast.showSuccess(
+        "Success",
         `Approved ${formatTokenAmount(
           offer.amount,
           offer.paymentToken as string,
@@ -398,7 +413,7 @@ export default function OfferDetailsPage({
     } catch (error: unknown) {
       console.error("Token approval failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to approve tokens: " + msg);
+      toast.showError("Approval Failed", "Failed to approve tokens: " + msg);
     } finally {
       setApproving(false);
     }
@@ -417,25 +432,28 @@ export default function OfferDetailsPage({
       if (isEth) {
         const tx = await contract.acceptOffer(offer.id as bigint, offer.amount);
         await tx.wait();
-        alert("Offer accepted");
+        toast.showSuccess("Success", "Offer accepted");
         window.location.reload();
         return;
       }
 
       // For token payments, we need to ensure approval first
       if (needsApproval) {
-        alert("Token approval is required before accepting the offer.");
+        toast.showWarning(
+          "Approval Required",
+          "Token approval is required before accepting the offer."
+        );
         return;
       }
 
       const tx = await contract.acceptOffer(offer.id as bigint);
       await tx.wait();
-      alert("Offer accepted");
+      toast.showSuccess("Success", "Offer accepted");
       window.location.reload();
     } catch (error: unknown) {
       console.error("Accept offer failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to accept offer: " + msg);
+      toast.showError("Error", "Failed to accept offer: " + msg);
     } finally {
       setSubmitting(false);
     }
@@ -454,7 +472,7 @@ export default function OfferDetailsPage({
     } catch (error: unknown) {
       console.error("Validate work failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to validate work: " + msg);
+      toast.showError("Error", "Failed to validate work: " + msg);
     } finally {
       setSubmitting(false);
     }
@@ -463,23 +481,31 @@ export default function OfferDetailsPage({
   const handleCancelOffer = async () => {
     if (!offer || !isProposer || submitting) return;
 
-    if (!confirm("Cancel this offer?")) return;
-
-    setSubmitting(true);
-    try {
-      const web3 = getBrowserProvider();
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      const tx = await contract.cancelOffer(offer.id as bigint);
-      await tx.wait();
-      window.location.reload();
-    } catch (error: unknown) {
-      console.error("Cancel offer failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to cancel offer: " + msg);
-    } finally {
-      setSubmitting(false);
-    }
+    setConfirm({
+      open: true,
+      title: "Cancel Offer",
+      message: "Are you sure you want to cancel this offer?",
+      action: async () => {
+        setConfirm((c) => ({ ...c, open: false }));
+        setSubmitting(true);
+        try {
+          const web3 = getBrowserProvider();
+          const signer = await web3.getSigner();
+          const contract = getMarketplaceContract(chainId, web3).connect(
+            signer
+          );
+          const tx = await contract.cancelOffer(offer.id as bigint);
+          await tx.wait();
+          window.location.reload();
+        } catch (error: unknown) {
+          console.error("Cancel offer failed:", error);
+          const msg = error instanceof Error ? error.message : "Unknown error";
+          toast.showError("Error", "Failed to cancel offer: " + msg);
+        } finally {
+          setSubmitting(false);
+        }
+      },
+    });
   };
 
   // Upload a single file to IPFS via our API route and return an ipfs:// URI
@@ -516,9 +542,21 @@ export default function OfferDetailsPage({
   async function handleSubmitDisputeWithCID() {
     if (!escrow || !offer || !address || openingDispute) return;
     if (!disputeReason.trim() && disputeFiles.length === 0) {
-      if (!confirm("Submit dispute without reason or attachments?")) return;
+      setConfirm({
+        open: true,
+        title: "Submit Dispute",
+        message: "Submit dispute without reason or attachments?",
+        action: async () => {
+          setConfirm((c) => ({ ...c, open: false }));
+          await submitDispute();
+        },
+      });
+      return;
     }
+    await submitDispute();
+  }
 
+  async function submitDispute() {
     try {
       setOpeningDispute(true);
       // Upload attachments (optional)
@@ -534,8 +572,8 @@ export default function OfferDetailsPage({
 
       const payload = {
         type: "dispute",
-        offerId: String(offer.id),
-        listingId: String(offer.listingId),
+        offerId: String(offer!.id),
+        listingId: String(offer!.listingId),
         author: address,
         role: isClientWallet ? "client" : "provider",
         reason: disputeReason,
@@ -547,13 +585,13 @@ export default function OfferDetailsPage({
       const web3 = getBrowserProvider();
       const signer = await web3.getSigner();
       const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      await contract.openDisputeWithCID(escrow.offerId, cid);
-      alert("Dispute opened");
+      await contract.openDisputeWithCID(escrow!.offerId, cid);
+      toast.showSuccess("Success", "Dispute opened");
       window.location.reload();
     } catch (error: unknown) {
       console.error("Open dispute with CID failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to open dispute: " + msg);
+      toast.showError("Error", "Failed to open dispute: " + msg);
     } finally {
       setOpeningDispute(false);
     }
@@ -562,9 +600,21 @@ export default function OfferDetailsPage({
   async function handleSubmitAppealWithCID() {
     if (!escrow || !offer || !address || appealing) return;
     if (!appealReason.trim() && appealFiles.length === 0) {
-      if (!confirm("Submit appeal without reason or attachments?")) return;
+      setConfirm({
+        open: true,
+        title: "Submit Appeal",
+        message: "Submit appeal without reason or attachments?",
+        action: async () => {
+          setConfirm((c) => ({ ...c, open: false }));
+          await submitAppeal();
+        },
+      });
+      return;
     }
+    await submitAppeal();
+  }
 
+  async function submitAppeal() {
     try {
       setAppealing(true);
       const attachmentUris: string[] = [];
@@ -579,8 +629,8 @@ export default function OfferDetailsPage({
 
       const payload = {
         type: "appeal",
-        offerId: String(offer.id),
-        listingId: String(offer.listingId),
+        offerId: String(offer!.id),
+        listingId: String(offer!.listingId),
         author: address,
         role: isClientWallet ? "client" : "provider",
         reason: appealReason,
@@ -592,13 +642,13 @@ export default function OfferDetailsPage({
       const web3 = getBrowserProvider();
       const signer = await web3.getSigner();
       const contract = getMarketplaceContract(chainId, web3).connect(signer);
-      await contract.appealDispute(escrow.offerId, cid);
-      alert("Appeal submitted");
+      await contract.appealDispute(escrow!.offerId, cid);
+      toast.showSuccess("Success", "Appeal submitted");
       window.location.reload();
     } catch (error: unknown) {
       console.error("Appeal with CID failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to submit appeal: " + msg);
+      toast.showError("Error", "Failed to submit appeal: " + msg);
     } finally {
       setAppealing(false);
     }
@@ -606,8 +656,17 @@ export default function OfferDetailsPage({
 
   async function handleLeaveReview() {
     if (!offer || !address || leavingReview) return;
-    if (!canReview) return alert("Reviews available after escrow completion.");
-    if (rating < 1 || rating > 5) return alert("Rating must be 1-5");
+    if (!canReview) {
+      toast.showWarning(
+        "Not Available",
+        "Reviews available after escrow completion."
+      );
+      return;
+    }
+    if (rating < 1 || rating > 5) {
+      toast.showWarning("Invalid Rating", "Rating must be 1-5");
+      return;
+    }
 
     setLeavingReview(true);
     try {
@@ -627,12 +686,12 @@ export default function OfferDetailsPage({
       const reviewURI = `data:application/json;base64,${btoa(json)}`;
 
       await contract.leaveReview(offer.id as bigint, rating, reviewURI);
-      alert("Review submitted");
+      toast.showSuccess("Success", "Review submitted");
       window.location.reload();
     } catch (error: unknown) {
       console.error("Leave review failed:", error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      alert("Failed to submit review: " + msg);
+      toast.showError("Error", "Failed to submit review: " + msg);
     } finally {
       setLeavingReview(false);
     }
@@ -1528,6 +1587,16 @@ export default function OfferDetailsPage({
           </aside>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        onCancel={() => setConfirm((c) => ({ ...c, open: false }))}
+        onConfirm={() => confirm.action?.()}
+        confirmText="Proceed"
+        danger={true}
+      />
     </div>
   );
 }

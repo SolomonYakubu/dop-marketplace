@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAccount } from "wagmi";
-import { ethers } from "ethers";
+import { useEffect, useState, useMemo, useCallback } from "react";
+
 import Link from "next/link";
 import Image from "next/image";
-import { getMarketplaceContract, CONTRACT_ADDRESSES } from "@/lib/contract";
+
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { Listing, ListingType, EnrichedListing } from "@/types/marketplace";
 import {
   formatAddress,
-  getRpcUrl,
   timeAgo,
   getCategoryLabel,
   loadListingMetadataFromURI,
@@ -18,22 +17,8 @@ import {
 import { useChainModal } from "@rainbow-me/rainbowkit";
 
 export default function BriefsPage() {
-  const { chain } = useAccount();
   const { openChainModal } = useChainModal();
-
-  const currentChainId = chain?.id;
-  const hasMainnetAddr =
-    !!CONTRACT_ADDRESSES[2741 as keyof typeof CONTRACT_ADDRESSES];
-  const hasTestnetAddr =
-    !!CONTRACT_ADDRESSES[11124 as keyof typeof CONTRACT_ADDRESSES];
-  const readChainId = useMemo(() => {
-    if (!currentChainId) return 11124;
-    const addr =
-      CONTRACT_ADDRESSES[currentChainId as keyof typeof CONTRACT_ADDRESSES];
-    if (addr && /^0x[a-fA-F0-9]{40}$/.test(addr)) return currentChainId;
-    if (hasTestnetAddr) return 11124;
-    return currentChainId;
-  }, [currentChainId, hasTestnetAddr]);
+  const { contract } = useMarketplaceContract();
 
   const [listings, setListings] = useState<EnrichedListing[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,26 +29,19 @@ export default function BriefsPage() {
     showBoostedFirst: true,
   });
 
-  const provider = useMemo(
-    () => new ethers.JsonRpcProvider(getRpcUrl(readChainId)),
-    [readChainId]
-  );
-
-  async function loadListings() {
+  const loadListings = useCallback(async () => {
     setLoading(true);
     setError(null);
-
     try {
-      const contract = getMarketplaceContract(readChainId, provider);
       let allListings: Listing[] = [];
       try {
-        allListings = (await contract.fetchAllListingsByIndex?.({})) ?? [];
+        allListings = (await contract?.fetchAllListingsByIndex?.({})) ?? [];
       } catch (err) {
         console.warn("fetchAllListingsByIndex failed:", err);
       }
       if (!allListings || allListings.length === 0) {
         try {
-          allListings = (await contract.fetchAllListingsByIdScan?.({})) ?? [];
+          allListings = (await contract?.fetchAllListingsByIdScan?.({})) ?? [];
         } catch (err) {
           console.warn("fetchAllListingsByIdScan failed:", err);
         }
@@ -110,12 +88,11 @@ export default function BriefsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [contract]);
 
   useEffect(() => {
     loadListings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [readChainId, provider]);
+  }, [loadListings]);
 
   const filteredListings = useMemo(() => {
     let filtered = [...listings];
@@ -147,12 +124,6 @@ export default function BriefsPage() {
     return filtered;
   }, [listings, filters]);
   console.log(filteredListings);
-  const showingFallback = Boolean(
-    currentChainId &&
-      currentChainId !== readChainId &&
-      !hasMainnetAddr &&
-      hasTestnetAddr
-  );
 
   if (loading) {
     return (
@@ -201,12 +172,6 @@ export default function BriefsPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      {showingFallback && (
-        <div className="mb-4 p-3 rounded border border-yellow-700/50 bg-yellow-500/10 text-yellow-300 text-sm">
-          Your wallet is on an unsupported network for this app configuration.
-          Showing data from Abstract Sepolia. Use the button to switch networks.
-        </div>
-      )}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">Briefs</h1>

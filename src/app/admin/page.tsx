@@ -53,20 +53,7 @@ function tsToDateString(ts?: number) {
 }
 
 async function loadJsonFromCid(cidOrUri: string, timeoutMs = 5500) {
-  // Add a global/overall timeout safeguard so we never stay stuck in a loading state
-  const overallMs = Math.max(timeoutMs + 3000, 8000); // at least 8s overall
-  try {
-    const result = await Promise.race([
-      fetchIpfsJson(cidOrUri, { timeoutMs }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("global-timeout")), overallMs)
-      ),
-    ]);
-    return result;
-  } catch (e) {
-    console.warn("loadJsonFromCid failed", cidOrUri, e);
-    throw e;
-  }
+  return await fetchIpfsJson(cidOrUri, { timeoutMs });
 }
 
 function AttachmentPreview({ uri }: { uri: string }) {
@@ -626,22 +613,12 @@ export default function AdminPage() {
       setPayloadLoading((m) => ({ ...m, [key]: true }));
       // mark slow-load timer
       setSlowLoading((m) => ({ ...m, [key]: false }));
-      const slowTimer = setTimeout(() => {
+      const timer = setTimeout(() => {
         setSlowLoading((m) => {
           if (disputePayloads[key] !== undefined) return m; // already loaded
           return { ...m, [key]: true };
         });
       }, 2500);
-      // Hard fail timer to avoid indefinite "loading" state
-      const hardFailTimer = setTimeout(() => {
-        setDisputePayloads((m) => {
-          if (m[key] === undefined) {
-            return { ...m, [key]: null };
-          }
-          return m;
-        });
-        setPayloadLoading((m) => ({ ...m, [key]: false }));
-      }, 12000); // 12s absolute cap
       try {
         const raw = await loadJsonFromCid(h.cid);
         const data = (raw || {}) as DisputePayload;
@@ -649,8 +626,7 @@ export default function AdminPage() {
       } catch {
         setDisputePayloads((m) => ({ ...m, [key]: null }));
       } finally {
-        clearTimeout(slowTimer);
-        clearTimeout(hardFailTimer);
+        clearTimeout(timer);
         setPayloadLoading((m) => ({ ...m, [key]: false }));
       }
     }
@@ -670,7 +646,6 @@ export default function AdminPage() {
         const payloads = await Promise.all(
           items.map(async (a) => {
             try {
-              // Add a race with a per-appeal overall timeout as well
               const raw = await loadJsonFromCid(a.cid);
               return (raw || {}) as DisputePayload;
             } catch {
@@ -1300,7 +1275,9 @@ export default function AdminPage() {
                                     <div className="text-xs text-red-400 flex items-center gap-2">
                                       <span>Failed to load metadata.</span>
                                       <button
-                                        onClick={() => retryAppealPayload(id, idx)}
+                                        onClick={() =>
+                                          retryAppealPayload(id, idx)
+                                        }
                                         className="underline decoration-dotted text-red-300 hover:text-red-200"
                                       >
                                         Retry

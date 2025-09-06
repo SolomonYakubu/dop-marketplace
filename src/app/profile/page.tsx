@@ -5,9 +5,11 @@ import { useAccount } from "wagmi";
 import { formatAddress, toGatewayUrl } from "@/lib/utils";
 import { ethers } from "ethers";
 import { getMarketplaceContract } from "@/lib/contract";
+import { useToastContext } from "@/components/providers";
 
 export default function ProfilePage() {
   const { address, chain } = useAccount();
+  const toast = useToastContext();
   const [bio, setBio] = useState("");
   const [skills, setSkills] = useState("");
   const [portfolioUri, setPortfolioUri] = useState("");
@@ -39,14 +41,17 @@ export default function ProfilePage() {
       setPortfolioUri(`ipfs://${data.cid}`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Upload failed";
-      alert(msg);
+      toast.showError("Upload Failed", msg);
     } finally {
       setUploading(false);
     }
   }
 
   async function saveOnChain() {
-    if (!chain) return alert("Connect your wallet");
+    if (!chain) {
+      toast.showError("Connect Wallet", "Connect your wallet");
+      return;
+    }
     try {
       setSaving(true);
       const provider = new ethers.BrowserProvider(
@@ -75,10 +80,10 @@ export default function ProfilePage() {
           1
         );
       }
-      alert("Profile saved");
+      toast.showSuccess("Success", "Profile saved");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to save profile";
-      alert(msg);
+      toast.showError("Error", msg);
     } finally {
       setSaving(false);
     }

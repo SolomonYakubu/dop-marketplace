@@ -58,18 +58,7 @@ export function toGatewayUrl(uri?: string | null): string | null {
   // If it's already http(s), return as-is
   if (/^https?:\/\//i.test(uri)) return uri;
 
-  // Normalize env bases
-  const pinataOrigin = (process.env.NEXT_PUBLIC_PINATA_GATEWAY || "").replace(
-    /\/+$/,
-    ""
-  );
-  const ipfsBaseEnv = normalizeGatewayBase(
-    process.env.NEXT_PUBLIC_IPFS_GATEWAY || null
-  );
-  const pinataBase = pinataOrigin
-    ? normalizeGatewayBase(pinataOrigin)
-    : "https://gateway.pinata.cloud/ipfs/";
-  const base = ipfsBaseEnv || pinataBase;
+  const base = "https://ipfs.io/ipfs/";
 
   // Handle common IPFS forms
   // ipfs://CID[/path]
@@ -448,17 +437,17 @@ function buildIpfsCandidateUrls(cidOrUri: string): string[] {
 
   // Extract CID/path for common gateways
   let cidPath = cidOrUri.trim();
-  if (cidPath.startsWith('ipfs://')) cidPath = cidPath.slice(7);
-  cidPath = cidPath.replace(/^ipfs\//i, '');
-  cidPath = cidPath.replace(/^\/?ipfs\//i, '');
+  if (cidPath.startsWith("ipfs://")) cidPath = cidPath.slice(7);
+  cidPath = cidPath.replace(/^ipfs\//i, "");
+  cidPath = cidPath.replace(/^\/?ipfs\//i, "");
 
   if (cidPath && !/^https?:\/\//i.test(cidPath)) {
     const bases = [
-      process.env.NEXT_PUBLIC_IPFS_GATEWAY?.replace(/\/$/, ''),
-      'https://gateway.pinata.cloud/ipfs',
-      'https://ipfs.io/ipfs',
-      'https://cloudflare-ipfs.com/ipfs',
-      'https://dweb.link/ipfs',
+      process.env.NEXT_PUBLIC_IPFS_GATEWAY?.replace(/\/$/, ""),
+      "https://gateway.pinata.cloud/ipfs",
+      "https://ipfs.io/ipfs",
+      "https://cloudflare-ipfs.com/ipfs",
+      "https://dweb.link/ipfs",
     ].filter(Boolean) as string[];
     for (const b of bases) {
       urls.push(`${b}/${cidPath}`);
@@ -483,7 +472,7 @@ function promiseAny<T>(promises: Promise<T>[]): Promise<T> {
     const errors: unknown[] = [];
     const total = promises.length;
     if (total === 0) {
-      reject(new Error('No promises'));
+      reject(new Error("No promises"));
       return;
     }
     promises.forEach((p) => {
@@ -498,11 +487,14 @@ function promiseAny<T>(promises: Promise<T>[]): Promise<T> {
   });
 }
 
-async function fetchAndParseJson(url: string, timeoutMs: number): Promise<unknown> {
+async function fetchAndParseJson(
+  url: string,
+  timeoutMs: number
+): Promise<unknown> {
   const res = await fetchWithTimeout(url, timeoutMs);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const ct = res.headers.get('content-type') || '';
-  if (ct.includes('application/json')) {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
     return await res.json();
   }
   const text = await res.text();
@@ -510,7 +502,7 @@ async function fetchAndParseJson(url: string, timeoutMs: number): Promise<unknow
     return JSON.parse(text);
   } catch {
     // If not JSON we signal failure so other gateways can try
-    throw new Error('Non-JSON response');
+    throw new Error("Non-JSON response");
   }
 }
 
@@ -536,7 +528,9 @@ export async function fetchIpfsJson(
   const attempt = (async () => {
     const candidates = buildIpfsCandidateUrls(cidOrUri);
     // Strategy: fire first three concurrently (or all if fewer), then fall back sequentially if they all fail.
-    const primaryBatch = candidates.slice(0, 3).map((u) => fetchAndParseJson(u, timeoutMs));
+    const primaryBatch = candidates
+      .slice(0, 3)
+      .map((u) => fetchAndParseJson(u, timeoutMs));
     try {
       const data = await promiseAny(primaryBatch);
       __ipfsJsonCache.set(key, { ts: Date.now(), data });
@@ -552,7 +546,7 @@ export async function fetchIpfsJson(
           // continue
         }
       }
-      throw new Error('All IPFS gateways failed');
+      throw new Error("All IPFS gateways failed");
     } finally {
       __ipfsInFlight.delete(key);
     }

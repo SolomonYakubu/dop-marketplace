@@ -458,6 +458,7 @@ export class MarketplaceContract {
       /^(listingsDesc:)/,
       /^(listingsByCreator:)/,
       /^lastListingId$/,
+      /^listingsBatch:/,
     ]);
     return receipt;
   }

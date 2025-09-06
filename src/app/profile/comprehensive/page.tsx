@@ -15,9 +15,11 @@ import {
   Mission,
   OnchainUserProfile,
 } from "@/types/marketplace";
+import { useToastContext } from "@/components/providers";
 
 export default function ComprehensiveProfilePage() {
   const { address, chain } = useAccount();
+  const toast = useToastContext();
   const [profile, setProfile] = useState<OnchainUserProfile | null>(null);
   const [missions, setMissions] = useState<Mission[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
@@ -70,7 +72,10 @@ export default function ComprehensiveProfilePage() {
   }, [chain, address]);
 
   async function saveProfile() {
-    if (!chain || !address) return alert("Connect your wallet");
+    if (!chain || !address) {
+      toast.showError("Connect Wallet", "Connect your wallet");
+      return;
+    }
     try {
       setSaving(true);
       const provider = new ethers.BrowserProvider(
@@ -100,12 +105,12 @@ export default function ComprehensiveProfilePage() {
         );
       }
 
-      alert("Profile saved successfully!");
+      toast.showSuccess("Success", "Profile saved successfully!");
       await loadProfileData();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to save profile";
       console.error("Profile save error:", e);
-      alert(msg);
+      toast.showError("Error", msg);
     } finally {
       setSaving(false);
     }
