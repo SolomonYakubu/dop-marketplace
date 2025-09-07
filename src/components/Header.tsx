@@ -4,7 +4,8 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { useAccount } from "wagmi";
-
+import Image from "next/image";
+import logo from "../../public/logo.jpeg";
 export function Header() {
   const { address } = useAccount();
   const [profileDropdown, setProfileDropdown] = useState(false);
@@ -46,7 +47,7 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
           <div className="flex items-center gap-3">
-            <span className="inline-block h-8 w-8 rounded bg-gradient-to-tr from-purple-500 to-cyan-500" />
+            <Image src={logo} alt="Logo" className="h-8 w-8 rounded" />
             <Link href="/" className="text-xl font-semibold text-white">
               Death of Pengu
             </Link>

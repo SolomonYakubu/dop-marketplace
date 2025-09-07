@@ -241,7 +241,7 @@ export default function ComprehensiveProfilePage() {
                     key={index}
                     className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs rounded-full"
                   >
-                    {getBadgeLabel(badge)}
+                    {Badge[badge] || "NONE"}
                   </span>
                 ))}
               </div>

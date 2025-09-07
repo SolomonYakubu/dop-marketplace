@@ -38,7 +38,6 @@ export enum DisputeOutcome {
 }
 
 export enum Badge {
-  NONE = 0,
   ROOKIE = 1,
   RELIABLE = 2,
   EXPERT = 3,

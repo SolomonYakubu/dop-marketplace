@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState, use, useCallback } from "react";
+import { useEffect, useState, use, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
@@ -12,7 +12,6 @@ import {
   formatAddress,
   formatTokenAmount,
   tokenSymbolFor,
-  getRpcUrl,
   timeAgo,
   loadListingMetadataFromURI,
   getCategoryLabel,
@@ -269,34 +268,6 @@ export default function BriefDetailsPage({
     return dec;
   }
 
-  // Ensure proposer has sufficient allowance for ERC20 payments before submitting offer
-  async function ensureAllowance(
-    tokenAddress: string,
-    owner: string,
-    spender: string,
-    amount: bigint,
-    signer: ethers.Signer,
-    provider: ethers.BrowserProvider
-  ) {
-    // Require strict hex addresses to avoid ENS resolution paths
-    const isHexAddr = (v: string) => /^0x[0-9a-fA-F]{40}$/.test(v);
-    if (!isHexAddr(tokenAddress) || !isHexAddr(owner) || !isHexAddr(spender)) {
-      console.warn("Skipping allowance check due to non-hex address", {
-        tokenAddress,
-        owner,
-        spender,
-      });
-      return;
-    }
-
-    const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-    const current: bigint = await token.allowance(owner, spender);
-    if (current < amount) {
-      const tx = await token.approve(spender, amount);
-      await waitTx(tx, provider);
-    }
-  }
-
   async function submitOffer() {
     if (!chain || !address || !state) return;
 
@@ -331,24 +302,6 @@ export default function BriefDetailsPage({
         const erc20Addr = ethers.getAddress(tokenAddress as string);
         const dec = await getTokenDecimals(erc20Addr, browserProvider);
         finalAmount = ethers.parseUnits(offerAmount, dec);
-
-        // Proposer approves allowance upfront for the marketplace contract
-        const ownerAddr = ethers.getAddress(await signer.getAddress());
-        const spender = contractRO.contractAddress;
-        if (spender) {
-          await ensureAllowance(
-            erc20Addr,
-            ownerAddr,
-            spender,
-            finalAmount,
-            signer,
-            browserProvider
-          );
-        } else {
-          console.warn(
-            "Marketplace contract address not resolvable; skipping allowance pre-check"
-          );
-        }
       }
 
       const tx = await contract.makeOffer(state.id, finalAmount, tokenAddress);
@@ -385,6 +338,7 @@ export default function BriefDetailsPage({
 
       toast.showSuccess("Offer accepted");
       await loadOffers();
+      window.location.reload();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to accept offer";
       console.error("Failed to accept offer:", e);
@@ -793,18 +747,6 @@ export default function BriefDetailsPage({
                 </div>
               </div>
             )}
-
-            {/* Metadata debug */}
-            <details className="container-panel">
-              <summary className="p-6 cursor-pointer font-medium">
-                Debug: Full metadata
-              </summary>
-              <div className="px-6 pb-6">
-                <pre className="text-xs text-gray-400 overflow-auto max-h-80">
-                  {JSON.stringify(state.metadata ?? null, null, 2)}
-                </pre>
-              </div>
-            </details>
           </aside>
         </div>
       ) : null}
