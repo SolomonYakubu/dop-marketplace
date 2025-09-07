@@ -34,7 +34,7 @@ export const config = getDefaultConfig({
   appName: "Death of Pengu Marketplace",
   projectId:
     process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID",
-  chains: [abstract, abstractSepolia],
+  chains: [abstractSepolia],
 });
 
 export const SUPPORTED_CHAINS = {
