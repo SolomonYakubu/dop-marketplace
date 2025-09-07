@@ -5,9 +5,11 @@ import { useAccount } from "wagmi";
 import { formatAddress, toGatewayUrl } from "@/lib/utils";
 import { ethers } from "ethers";
 import { getMarketplaceContract } from "@/lib/contract";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { useToastContext } from "@/components/providers";
 
 export default function ProfilePage() {
+  const { contract } = useMarketplaceContract();
   const { address, chain } = useAccount();
   const toast = useToastContext();
   const [bio, setBio] = useState("");
@@ -54,26 +56,20 @@ export default function ProfilePage() {
     }
     try {
       setSaving(true);
-      const provider = new ethers.BrowserProvider(
-        (window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum
-      );
-      const contract = getMarketplaceContract(chain.id, provider);
-      const signer = await provider.getSigner();
-      contract.connect(signer);
 
       const skillsArr = skills
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const existing = address ? await contract.getProfile(address) : null;
+      const existing = address ? await contract!.getProfile(address) : null;
       if (existing && existing.joinedAt && existing.joinedAt !== BigInt(0)) {
-        await contract.updateProfile(
+        await contract!.updateProfile(
           bio,
           skillsArr,
           portfolioUri ? portfolioUri : ""
         );
       } else {
-        await contract.createProfile(
+        await contract!.createProfile(
           bio,
           skillsArr,
           portfolioUri ? portfolioUri : "",

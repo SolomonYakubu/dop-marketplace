@@ -7,8 +7,9 @@ import {
   formatTokenAmountWithSymbol,
   getBadgeLabel,
 } from "@/lib/utils";
-import { ethers } from "ethers";
-import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
+
+import { getTokenAddresses } from "@/lib/contract";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import {
   UserType,
   Badge,
@@ -19,6 +20,7 @@ import { useToastContext } from "@/components/providers";
 
 export default function ComprehensiveProfilePage() {
   const { address, chain } = useAccount();
+  const { contract } = useMarketplaceContract();
   const toast = useToastContext();
   const [profile, setProfile] = useState<OnchainUserProfile | null>(null);
   const [missions, setMissions] = useState<Mission[]>([]);
@@ -40,13 +42,9 @@ export default function ComprehensiveProfilePage() {
 
     try {
       setLoading(true);
-      const provider = new ethers.BrowserProvider(
-        (window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum
-      );
-      const contract = getMarketplaceContract(chain.id, provider);
 
       // Load profile
-      const profileData = (await contract.getProfile(
+      const profileData = (await contract!.getProfile(
         address
       )) as OnchainUserProfile;
       if (profileData && profileData.joinedAt !== BigInt(0)) {
@@ -58,18 +56,18 @@ export default function ComprehensiveProfilePage() {
       }
 
       // Load mission history
-      const missionHistory = await contract.getMissionHistory(address);
+      const missionHistory = await contract!.getMissionHistory(address);
       setMissions(missionHistory);
 
       // Load badges
-      const userBadges = await contract.getUserBadges(address);
+      const userBadges = await contract!.getUserBadges(address);
       setBadges(userBadges);
     } catch (error) {
       console.error("Failed to load profile data:", error);
     } finally {
       setLoading(false);
     }
-  }, [chain, address]);
+  }, [chain, address, contract]);
 
   async function saveProfile() {
     if (!chain || !address) {
@@ -78,12 +76,6 @@ export default function ComprehensiveProfilePage() {
     }
     try {
       setSaving(true);
-      const provider = new ethers.BrowserProvider(
-        (window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum
-      );
-      const contract = getMarketplaceContract(chain.id, provider);
-      const signer = await provider.getSigner();
-      contract.connect(signer);
 
       const skillsArr = skills
         .split(",")
@@ -91,13 +83,13 @@ export default function ComprehensiveProfilePage() {
         .filter(Boolean);
 
       if (profile && profile.joinedAt !== BigInt(0)) {
-        await contract.updateProfile(
+        await contract!.updateProfile(
           bio,
           skillsArr,
           portfolioUri ? portfolioUri : ""
         );
       } else {
-        await contract.createProfile(
+        await contract!.createProfile(
           bio,
           skillsArr,
           portfolioUri ? portfolioUri : "",

@@ -5,7 +5,8 @@ import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import Link from "next/link";
 import Image from "next/image";
-import { getMarketplaceContract, CONTRACT_ADDRESSES } from "@/lib/contract";
+import { CONTRACT_ADDRESSES } from "@/lib/contract";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import {
   Listing,
   ListingType,
@@ -23,6 +24,7 @@ import {
 import { useChainModal } from "@rainbow-me/rainbowkit";
 
 export default function GigsPage() {
+  const { contract } = useMarketplaceContract();
   const { chain } = useAccount();
   const { openChainModal } = useChainModal();
   // Determine an effective chain for reads: if current chain isn't configured, fall back to testnet when available
@@ -62,7 +64,6 @@ export default function GigsPage() {
     setError(null);
 
     try {
-      const contract = getMarketplaceContract(readChainId, provider);
       // Use view/id-based enumeration of all listings with robust fallback
       let allListings: Listing[] = [];
       try {

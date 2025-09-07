@@ -1,7 +1,7 @@
 "use client";
 
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider, type State } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { config } from "@/lib/rainbowkit";
 import "@rainbow-me/rainbowkit/styles.css";
@@ -26,17 +26,23 @@ export function useToastContext() {
   return ctx;
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  initialState,
+}: {
+  children: React.ReactNode;
+  initialState?: State;
+}) {
   const { toasts, removeToast, showSuccess, showError, showWarning, showInfo } =
     useToast();
 
   const value = useMemo(
     () => ({ toasts, showSuccess, showError, showWarning, showInfo }),
-    [toasts]
+    [toasts, showSuccess, showError, showWarning, showInfo]
   );
 
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={config} initialState={initialState}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider theme={darkTheme({ borderRadius: "medium" })}>
           <ToastContext.Provider value={value}>

@@ -9,10 +9,16 @@ export function Header() {
   const { address } = useAccount();
   const [profileDropdown, setProfileDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Ensure we only render address-dependent UI after the component mounts
+  const [mounted, setMounted] = useState(false);
   // Mobile menu state & refs
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -259,7 +265,7 @@ export function Header() {
                     >
                       My Profile
                     </Link>
-                    {address && (
+                    {mounted && address && (
                       <Link
                         href={`/profile/${address}`}
                         className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"

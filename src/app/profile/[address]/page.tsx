@@ -4,7 +4,8 @@ import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
-import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
+import { getTokenAddresses } from "@/lib/contract";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import {
   OnchainUserProfile,
   Listing,
@@ -17,27 +18,12 @@ import {
   formatAddress,
   truncateText,
   formatTokenAmountWithSymbol,
+  timeAgo,
+  getRpcUrl,
 } from "@/lib/utils";
 import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { LoadingButton } from "@/components/Loading";
 import Image from "next/image";
-
-function timeAgo(tsSec: number) {
-  const sec = Math.max(0, Math.floor(Date.now() / 1000 - tsSec));
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const d = Math.floor(hr / 24);
-  return `${d}d ago`;
-}
-
-function getRpcUrl(chainId: number) {
-  return chainId === 2741
-    ? "https://api.mainnet.abs.xyz"
-    : "https://api.testnet.abs.xyz";
-}
 
 // Minimal ERC-20 interface
 interface Erc20 {
@@ -69,6 +55,7 @@ export default function PublicProfilePage({
     () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
     [chainId]
   );
+  const { contract } = useMarketplaceContract();
 
   const tokenAddresses = useMemo(() => getTokenAddresses(chainId), [chainId]);
   const toast = useToast();
@@ -235,12 +222,11 @@ export default function PublicProfilePage({
       setError(null);
       try {
         const user = resolvedParams.address;
-        const contract = getMarketplaceContract(chainId, provider);
 
         // Profile
         let p: OnchainUserProfile | null = null;
         try {
-          const raw = (await contract.getProfile(
+          const raw = (await contract!.getProfile(
             user
           )) as unknown as OnchainUserProfile;
           if (raw) {
@@ -284,15 +270,15 @@ export default function PublicProfilePage({
 
         // Boosted status
         try {
-          const boosted = await contract.isProfileBoosted(user);
+          const boosted = await contract!.isProfileBoosted(user);
           setIsBoosted(!!boosted);
         } catch {}
 
         // Rating + reviews
         try {
-          const rating = await contract.getAverageRating(user);
+          const rating = await contract!.getAverageRating(user);
           setAvgRating(Number(rating));
-          const rlist = (await contract.getReviews(user)) as RawReview[];
+          const rlist = (await contract!.getReviews(user)) as RawReview[];
           // Newest first
           const all = (rlist || []).slice().reverse();
           setAllReviewsRaw(all);
@@ -304,17 +290,17 @@ export default function PublicProfilePage({
 
         // Missions and badges
         try {
-          const m = await contract.getMissionHistory(user);
+          const m = await contract!.getMissionHistory(user);
           setMissions(m);
         } catch {}
         try {
-          const b = await contract.getUserBadges(user);
+          const b = await contract!.getUserBadges(user);
           setBadges(b);
         } catch {}
 
         // Listings created by user
         try {
-          const userListings = await contract.getListingsByCreator(
+          const userListings = await contract!.getListingsByCreator(
             user,
             0,
             120
@@ -328,18 +314,18 @@ export default function PublicProfilePage({
 
         // Fetch boost params and DOP token info
         try {
-          const params = await contract.getProfileBoostParams();
+          const params = await contract!.getProfileBoostParams();
           setBoostParams(params);
           let dop = tokenAddresses.DOP;
           if (!dop) {
             try {
-              dop = await contract.getDopToken();
+              dop = await contract!.getDopToken();
             } catch {}
           }
           if (dop) {
             setDopToken(dop);
             try {
-              const erc20 = contract.getErc20(dop) as unknown as Erc20;
+              const erc20 = contract!.getErc20(dop) as unknown as Erc20;
               const dec = await erc20.decimals();
               setDopDecimals(Number(dec));
             } catch {
@@ -356,7 +342,7 @@ export default function PublicProfilePage({
       }
     }
     load();
-  }, [chainId, provider, resolvedParams.address, tokenAddresses.DOP]);
+  }, [chainId, contract, provider, resolvedParams.address, tokenAddresses.DOP]);
 
   async function handleBuyBoost() {
     if (!isOwner) {
@@ -371,23 +357,19 @@ export default function PublicProfilePage({
     const result = await execute(async () => {
       // Use browser wallet for write
 
-      const web3 = new ethers.BrowserProvider(window.ethereum);
-      const signer = await web3.getSigner();
-      const c = getMarketplaceContract(chainId, web3).connect(signer);
-
       // Resolve DOP token address
       let dop = dopToken;
       if (!dop) {
         try {
-          dop = await c.getDopToken();
+          dop = await contract!.getDopToken();
         } catch {}
       }
       if (!dop) throw new Error("DOP token address is not configured");
 
       // Ensure allowance
-      const erc20 = c.getErc20(dop) as unknown as Erc20;
-      const owner = await signer.getAddress();
-      const spender = c.contractAddress;
+      const erc20 = contract!.getErc20(dop) as unknown as Erc20;
+      const owner = address;
+      const spender = contract!.contractAddress;
       const current: bigint = await erc20.allowance(owner, spender);
       if (current < boostParams.price) {
         const tx = await erc20.approve(spender, boostParams.price);
@@ -395,7 +377,7 @@ export default function PublicProfilePage({
       }
 
       // Buy boost
-      await c.buyProfileBoost(boostParams.price);
+      await contract!.buyProfileBoost(boostParams.price);
     });
 
     if (result !== null) {

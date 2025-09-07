@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, use } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
+import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
 import type {
   Listing,
@@ -73,6 +74,7 @@ export default function GigDetailsPage({
   params: Promise<{ id: string }>;
 }) {
   const resolvedParams = use(params);
+  const { contract } = useMarketplaceContract();
   const { address, chain } = useAccount();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -209,9 +211,8 @@ export default function GigDetailsPage({
       setLoading(true);
       setError(null);
       try {
-        const contract = getMarketplaceContract(chainId, provider);
         const id = BigInt(resolvedParams.id);
-        const l: Listing = await contract.getListing(id);
+        const l: Listing = await contract!.getListing(id);
 
         // Fetch metadata from IPFS using shared helper
         let meta: ListingMetadata | undefined = undefined;
@@ -225,7 +226,7 @@ export default function GigDetailsPage({
         let creatorProfile: OnchainUserProfile | null = null;
         let creatorProfileMeta: Partial<ProfileMetadata> | null = null;
         try {
-          const prof = (await contract.getProfile(
+          const prof = (await contract!.getProfile(
             l.creator
           )) as OnchainUserProfile;
           if (
@@ -259,9 +260,9 @@ export default function GigDetailsPage({
 
         // Fetch rating + all reviews for the creator (lazy-parse in chunks)
         try {
-          const rating = await contract.getAverageRating(l.creator);
+          const rating = await contract!.getAverageRating(l.creator);
           setAvgRating(Number(rating));
-          const rlist = (await contract.getReviews(
+          const rlist = (await contract!.getReviews(
             l.creator
           )) as ReviewWithTimestamp[];
           const ordered = (rlist || []).slice().reverse(); // newest first
@@ -420,7 +421,11 @@ export default function GigDetailsPage({
             let offset = 0;
             let latest: Offer | null = null;
             for (let i = 0; i < 50; i++) {
-              const page = await contract.getOffersForListing(id, offset, PAGE);
+              const page = await contract!.getOffersForListing(
+                id,
+                offset,
+                PAGE
+              );
               if (!page || page.length === 0) break;
               // filter to current user proposer
               const mine = page
@@ -435,7 +440,7 @@ export default function GigDetailsPage({
             setMyOffer(latest);
             if (latest && latest.accepted) {
               try {
-                const esc = await contract.getEscrow(latest.id);
+                const esc = await contract!.getEscrow(latest.id);
                 setMyEscrow(esc);
               } catch {}
             } else {

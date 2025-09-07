@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { ethers } from "ethers";
 
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { ListingType } from "@/types/marketplace";
@@ -77,11 +76,6 @@ export default function CreatePage() {
         type: "application/json",
       });
       const metadataUri = await uploadToIpfs(metaFile);
-
-      // 3) Create listing on-chain
-      const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
-        .ethereum;
-      if (!eth) throw new Error("Wallet provider not found");
 
       const listingType = type === "brief" ? 0 : 1; // BRIEF/GIG
       await contract!.createListing(listingType, BigInt(category), metadataUri);

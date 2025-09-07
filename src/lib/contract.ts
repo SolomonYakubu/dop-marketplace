@@ -317,6 +317,7 @@ export class MarketplaceContract {
 
   connect(signer: ethers.Signer) {
     this.signer = signer;
+    console.log(signer);
     this.contract = this.contract.connect(signer) as ethers.Contract;
     return this;
   }
