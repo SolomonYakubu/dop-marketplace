@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare module "pinata" {
   export class PinataSDK {
     constructor(config: { pinataJwt?: string; pinataGateway?: string });
