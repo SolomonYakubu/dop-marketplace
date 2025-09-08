@@ -208,7 +208,14 @@ export function Header() {
               <div className="flex flex-col gap-2">
                 {/* Connect button inside the mobile menu */}
                 <div className="px-3 py-2">
-                  <ConnectButton chainStatus="icon" showBalance={false} />
+                  <ConnectButton
+                    chainStatus="icon"
+                    accountStatus={{
+                      smallScreen: "avatar",
+                      largeScreen: "full",
+                    }}
+                    showBalance={false}
+                  />
                 </div>
 
                 {/* Divider */}
