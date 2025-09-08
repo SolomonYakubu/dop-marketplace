@@ -2,7 +2,7 @@
 
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { defineChain } from "viem";
-
+import { http } from "wagmi";
 // Abstract chains
 export const abstract = defineChain({
   id: 2741,
@@ -35,6 +35,10 @@ export const config = getDefaultConfig({
   projectId:
     process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID",
   chains: [abstractSepolia],
+  transports: {
+    [abstractSepolia.id]: http(),
+    [abstract.id]: http(),
+  },
 });
 
 export const SUPPORTED_CHAINS = {

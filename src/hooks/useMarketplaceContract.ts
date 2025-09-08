@@ -1,12 +1,14 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useAccount, useWalletClient } from "wagmi";
 import { ethers } from "ethers";
 import { useMemo } from "react";
 import { getMarketplaceContract } from "@/lib/contract";
 import { getRpcUrl } from "@/lib/utils";
 export function useMarketplaceContract() {
   const { address, chain } = useAccount();
+  const { data: walletClient } = useWalletClient();
+
   let provider;
   if (
     typeof window !== "undefined" &&
@@ -14,6 +16,21 @@ export function useMarketplaceContract() {
   ) {
     provider = new ethers.BrowserProvider(
       (window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum
+    );
+  } else if (walletClient) {
+    const eip1193Provider: ethers.Eip1193Provider = {
+      request: (args) =>
+        // Cast to any because walletClient.request expects a narrowed union of method strings
+        walletClient.request({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          method: args.method as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          params: args.params as any,
+        }),
+    };
+    provider = new ethers.BrowserProvider(
+      eip1193Provider,
+      walletClient.chain?.id
     );
   } else {
     provider = new ethers.JsonRpcProvider(
