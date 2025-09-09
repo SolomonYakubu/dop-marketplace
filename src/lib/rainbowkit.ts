@@ -1,6 +1,7 @@
 "use client";
 
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { getDefaultConfig, getDefaultWallets } from "@rainbow-me/rainbowkit";
+import { abstractWallet } from "@abstract-foundation/agw-react/connectors";
 import { defineChain } from "viem";
 import { http } from "wagmi";
 // Abstract chains
@@ -30,6 +31,17 @@ export const abstractSepolia = defineChain({
   },
 });
 
+// Compose wallet list: take RainbowKit defaults & add Abstract Global Wallet group
+const { wallets: defaultWallets } = getDefaultWallets();
+const wallets = [
+  {
+    groupName: "Abstract",
+    wallets: [abstractWallet], // note: pass wallet factory, not invoked
+  },
+  ...defaultWallets,
+];
+
+// RainbowKit + Wagmi configuration including Abstract Global Wallet
 export const config = getDefaultConfig({
   appName: "Death of Pengu Marketplace",
   projectId:
@@ -39,6 +51,8 @@ export const config = getDefaultConfig({
     [abstractSepolia.id]: http(),
     [abstract.id]: http(),
   },
+  wallets,
+  // ssr: true
 });
 
 export const SUPPORTED_CHAINS = {
