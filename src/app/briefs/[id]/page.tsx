@@ -6,7 +6,8 @@ import { useEffect, useState, use, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
-import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
+import { getTokenAddresses } from "@/lib/contract";
+import { knownDecimalsFor } from "@/lib/utils";
 import {
   toGatewayUrl,
   formatAddress,
@@ -38,12 +39,7 @@ const ESCROW_STATUS_CLASS: Record<number, string> = {
   5: "px-2 py-1 bg-gray-500/20 text-gray-400 text-xs rounded-full",
 };
 
-// Minimal ERC20 ABI for allowance/approve
-const ERC20_ABI = [
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 value) returns (bool)",
-  "function decimals() view returns (uint8)",
-];
+// Removed local ERC20_ABI (no on-chain decimals lookup needed here)
 
 interface OfferWithEscrow extends Offer {
   escrowStatus?: EscrowStatus;
@@ -216,56 +212,9 @@ export default function BriefDetailsPage({
     }
   }, [state, contract, address]);
 
-  // Normalize waiting for transactions across different return shapes (hash or TransactionResponse)
-  async function waitTx(
-    tx:
-      | { wait?: () => Promise<unknown> }
-      | { hash?: string }
-      | string
-      | null
-      | undefined,
-    provider:
-      | { waitForTransaction?: (hash: string) => Promise<unknown> }
-      | null
-      | undefined
-  ) {
-    // ethers.Contract (v6): TransactionResponse with wait()
-    if (
-      tx &&
-      typeof (tx as { wait?: () => Promise<unknown> }).wait === "function"
-    ) {
-      return await (tx as { wait: () => Promise<unknown> }).wait();
-    }
-    // viem/hash-like or custom wrapper: string or object with .hash
-    const hash = typeof tx === "string" ? tx : (tx as { hash?: string })?.hash;
-    if (!hash) return null;
-    if (
-      provider &&
-      typeof (
-        provider as { waitForTransaction?: (hash: string) => Promise<unknown> }
-      ).waitForTransaction === "function"
-    ) {
-      return await (
-        provider as { waitForTransaction: (hash: string) => Promise<unknown> }
-      ).waitForTransaction(hash);
-    }
-    // Fallback no-op
-    return null;
-  }
-
-  // Cache for ERC20 decimals per token address
-  const erc20DecimalsCache = new Map<string, number>();
-  async function getTokenDecimals(
-    tokenAddress: string,
-    provider: ethers.Provider
-  ): Promise<number> {
-    const key = ethers.getAddress(tokenAddress);
-    const cached = erc20DecimalsCache.get(key);
-    if (cached) return cached;
-    const tokenRO = new ethers.Contract(key, ERC20_ABI, provider);
-    const dec: number = await tokenRO.decimals();
-    erc20DecimalsCache.set(key, dec);
-    return dec;
+  // Simple helper to resolve decimals using known mapping; fallback to 18
+  function resolveDecimals(tokenAddress: string): number {
+    return knownDecimalsFor(tokenAddress, tokens) ?? 18;
   }
 
   async function submitOffer() {
@@ -278,14 +227,7 @@ export default function BriefDetailsPage({
 
     try {
       setSubmittingOffer(true);
-
-      const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
-        .ethereum;
-      if (!eth) throw new Error("Wallet provider not found");
-      const browserProvider = new ethers.BrowserProvider(eth);
-      const signer = await browserProvider.getSigner();
-      const contractRO = getMarketplaceContract(chainId, browserProvider);
-      const contract = contractRO.connect(signer);
+      if (!contract) throw new Error("Contract not ready");
 
       const tokenAddress =
         paymentToken === "ETH"
@@ -300,17 +242,18 @@ export default function BriefDetailsPage({
         finalAmount = ethers.parseEther(offerAmount);
       } else {
         const erc20Addr = ethers.getAddress(tokenAddress as string);
-        const dec = await getTokenDecimals(erc20Addr, browserProvider);
+        const dec = resolveDecimals(erc20Addr);
         finalAmount = ethers.parseUnits(offerAmount, dec);
       }
 
       const tx = await contract.makeOffer(state.id, finalAmount, tokenAddress);
-      await waitTx(tx, browserProvider);
+      await tx;
 
       toast.showSuccess("Offer submitted");
       setOfferAmount("");
       setShowOfferForm(false);
       await loadOffers();
+      window.location.reload();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to submit offer";
       console.error("Failed to submit offer:", e);
@@ -324,17 +267,9 @@ export default function BriefDetailsPage({
     if (!chain || !address) return;
 
     try {
-      const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
-        .ethereum;
-      if (!eth) throw new Error("Wallet provider not found");
-      const browserProvider = new ethers.BrowserProvider(eth);
-      const signer = await browserProvider.getSigner();
-      const contractRO = getMarketplaceContract(chainId, browserProvider);
-      const contract = contractRO.connect(signer);
-
-      // No token approvals here; creator just accepts
+      if (!contract) throw new Error("Contract not ready");
       const tx = await contract.acceptOffer(offerId);
-      await waitTx(tx, browserProvider);
+      await tx.wait();
 
       toast.showSuccess("Offer accepted");
       await loadOffers();
@@ -349,16 +284,9 @@ export default function BriefDetailsPage({
   async function cancelOffer(offerId: bigint) {
     if (!chain || !address) return;
     try {
-      const eth = (window as unknown as { ethereum?: ethers.Eip1193Provider })
-        .ethereum;
-      if (!eth) throw new Error("Wallet provider not found");
-      const browserProvider = new ethers.BrowserProvider(eth);
-      const signer = await browserProvider.getSigner();
-      const contractRO = getMarketplaceContract(chainId, browserProvider);
-      const contract = contractRO.connect(signer);
-
+      if (!contract) throw new Error("Contract not ready");
       const tx = await contract.cancelOffer(offerId);
-      await waitTx(tx, browserProvider);
+      await tx.wait();
 
       toast.showSuccess("Offer cancelled");
       await loadOffers();

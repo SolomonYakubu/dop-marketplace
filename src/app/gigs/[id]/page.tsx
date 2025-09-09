@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState, use } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
-import { getMarketplaceContract, getTokenAddresses } from "@/lib/contract";
+import { getTokenAddresses } from "@/lib/contract";
 import type {
   Listing,
   OnchainUserProfile,
@@ -20,7 +20,6 @@ import {
   toGatewayUrl,
   formatAddress,
   truncateText,
-  getRpcUrl,
   timeAgo,
   loadListingMetadataFromURI,
   getCategoryLabel,
@@ -28,6 +27,7 @@ import {
   asString,
   asStringArray,
   asNumber,
+  knownDecimalsFor,
 } from "@/lib/utils";
 import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { ToastContainer } from "@/components/Toast";
@@ -123,11 +123,6 @@ export default function GigDetailsPage({
   }>({ open: false, title: "", message: undefined, action: undefined });
 
   const chainId = chain?.id ?? 11124;
-  const provider = useMemo(
-    () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
-    [chainId]
-  );
-
   const tokenAddresses = useMemo(() => getTokenAddresses(chainId), [chainId]);
 
   // Normalize profile skills to avoid undefined access
@@ -459,17 +454,13 @@ export default function GigDetailsPage({
       }
     }
     load();
-  }, [chainId, provider, resolvedParams.id, address]);
+  }, [chainId, resolvedParams.id, address, contract]);
 
   const handleBookService = async () => {
     if (!address || !state || submitting) return;
 
     const result = await execute(async () => {
-      // Use browser wallet for write
-
-      const web3 = new ethers.BrowserProvider(window.ethereum);
-      const signer = await web3.getSigner();
-      const contract = getMarketplaceContract(chainId, web3).connect(signer);
+      if (!contract) throw new Error("Contract not ready");
 
       const symbol = bookingDetails.token || "ETH";
 
@@ -494,11 +485,7 @@ export default function GigDetailsPage({
       if (symbol === "ETH") {
         amount = ethers.parseEther(bookingDetails.budget);
       } else {
-        const erc20 = contract.getErc20(paymentToken) as unknown as {
-          decimals: () => Promise<number | bigint | string>;
-        };
-        const dec = await erc20.decimals();
-        const decimals = Number(dec);
+        const decimals = knownDecimalsFor(paymentToken, tokenAddresses) ?? 18;
         amount = ethers.parseUnits(bookingDetails.budget, decimals);
       }
 
@@ -531,13 +518,9 @@ export default function GigDetailsPage({
         setConfirm((c) => ({ ...c, open: false }));
         try {
           setOfferActionLoading("cancel");
-          const web3 = new ethers.BrowserProvider(window.ethereum);
-          const signer = await web3.getSigner();
-          const contract = getMarketplaceContract(chainId, web3).connect(
-            signer
-          );
+          if (!contract) throw new Error("Contract not ready");
           const tx = await contract.cancelOffer(myOffer.id);
-          await tx;
+          await tx.wait();
           toast.showSuccess(
             "Offer cancelled",
             "Your offer has been cancelled."
@@ -565,13 +548,9 @@ export default function GigDetailsPage({
         setConfirm((c) => ({ ...c, open: false }));
         try {
           setOfferActionLoading("dispute");
-          const web3 = new ethers.BrowserProvider(window.ethereum);
-          const signer = await web3.getSigner();
-          const contract = getMarketplaceContract(chainId, web3).connect(
-            signer
-          );
+          if (!contract) throw new Error("Contract not ready");
           const tx = await contract.openDispute(myEscrow.offerId);
-          await tx;
+          await tx.wait();
           toast.showSuccess("Dispute opened", "Refund request submitted.");
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Failed to open dispute";

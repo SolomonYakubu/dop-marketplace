@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { formatAddress, toGatewayUrl } from "@/lib/utils";
-import { ethers } from "ethers";
-import { getMarketplaceContract } from "@/lib/contract";
+// Removed direct ethers/getMarketplaceContract usage in favor of hook contract
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { useToastContext } from "@/components/providers";
 
@@ -87,22 +86,20 @@ export default function ProfilePage() {
 
   useEffect(() => {
     async function load() {
-      if (!chain || !address) return;
+      if (!chain || !address || !contract) return;
       try {
-        const provider = new ethers.BrowserProvider(
-          (window as unknown as { ethereum: ethers.Eip1193Provider }).ethereum
-        );
-        const contract = getMarketplaceContract(chain.id, provider);
         const p = await contract.getProfile(address);
         if (p && p.joinedAt && p.joinedAt !== BigInt(0)) {
           setBio(p.bio || "");
           setSkills((p.skills || []).join(", "));
           setPortfolioUri(p.portfolioURIs?.[0] || "");
         }
-      } catch {}
+      } catch {
+        // silent
+      }
     }
     load();
-  }, [chain, address]);
+  }, [chain, address, contract]);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">

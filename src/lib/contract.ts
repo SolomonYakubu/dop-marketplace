@@ -687,7 +687,7 @@ export class MarketplaceContract {
   }
 
   async makeOffer(listingId: bigint, amount: bigint, paymentToken: string) {
-    // if (!this.signer) throw new Error("Signer required for write operations");
+    if (!this.signer) throw new Error("Signer required for write operations");
 
     // For GIGs with ERC20 payments, the offer proposer (client) needs to approve allowance upfront
     // because they will be the payer when the offer is accepted
@@ -1659,50 +1659,33 @@ export async function ensureChain(
   }
 }
 
-export async function connectAndEnsureChain(
-  targetChainId: number,
-  opts?: { forceInjected?: boolean }
-) {
-  // Avoid eagerly prompting injected wallets (MetaMask) unless explicitly requested.
+export async function connectAndEnsureChain(targetChainId: number) {
   const eth = getInjectedEthereum();
-  if (!eth) {
-    if (opts?.forceInjected) {
-      throw new Error("No injected wallet found (window.ethereum)");
-    }
-    return { provider: undefined, signer: undefined };
-  }
+  if (!eth) throw new Error("No injected wallet found (window.ethereum)");
 
-  // Request account access only when forced (explicit user action) to prevent popups on navigation
-  if (opts?.forceInjected) {
-    await eth.request({ method: "eth_requestAccounts" });
-  }
+  // Request account access
+  await eth.request({ method: "eth_requestAccounts" });
 
+  // Use "any" so provider stays usable across network changes
   let provider = new ethers.BrowserProvider(asEthersEip1193(eth), "any");
-  if (opts?.forceInjected) {
-    const net = await provider.getNetwork();
-    if (Number(net.chainId) !== targetChainId) {
-      await ensureChain(targetChainId);
-      provider = new ethers.BrowserProvider(asEthersEip1193(eth), "any");
-    }
+  const net = await provider.getNetwork();
+
+  if (Number(net.chainId) !== targetChainId) {
+    await ensureChain(targetChainId);
+    provider = new ethers.BrowserProvider(asEthersEip1193(eth), "any");
   }
 
-  const signer = opts?.forceInjected ? await provider.getSigner() : undefined;
-  return { provider: opts?.forceInjected ? provider : undefined, signer };
+  const signer = await provider.getSigner();
+  return { provider, signer };
 }
 
 // Convenience initializer: ensure wallet is on the correct chain, then
 // return a connected MarketplaceContract using the injected wallet.
 export async function createMarketplaceWithWallet(
   contractAddress: string,
-  targetChainId: number,
-  opts?: { forceInjected?: boolean }
+  targetChainId: number
 ): Promise<MarketplaceContract> {
-  const { provider, signer } = await connectAndEnsureChain(targetChainId, opts);
-  if (!provider || !signer) {
-    throw new Error(
-      "Injected wallet not available (use forceInjected: true only on explicit user action)."
-    );
-  }
+  const { provider, signer } = await connectAndEnsureChain(targetChainId);
   const instance = new MarketplaceContract(contractAddress, provider);
   instance.connect(signer);
   return instance;
