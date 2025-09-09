@@ -14,39 +14,8 @@ export default function ProfilePage() {
   const [bio, setBio] = useState("");
   const [skills, setSkills] = useState("");
   const [portfolioUri, setPortfolioUri] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
 
-  async function uploadToIpfs() {
-    try {
-      setUploading(true);
-      const payload = {
-        bio,
-        skills: skills
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-        createdAt: Date.now(),
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json",
-      });
-      const file = new File([blob], "profile.json", {
-        type: "application/json",
-      });
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/ipfs", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Upload failed");
-      setPortfolioUri(`ipfs://${data.cid}`);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Upload failed";
-      toast.showError("Upload Failed", msg);
-    } finally {
-      setUploading(false);
-    }
-  }
+  const [saving, setSaving] = useState(false);
 
   async function saveOnChain() {
     if (!chain) {
@@ -157,14 +126,6 @@ export default function ProfilePage() {
             className="rounded-lg bg-white text-black px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={uploadToIpfs}
-            className="rounded-lg border border-gray-800 px-4 py-2 text-sm hover:bg-gray-900 disabled:opacity-50"
-          >
-            {uploading ? "Uploading..." : "Upload to IPFS"}
           </button>
         </div>
       </section>
