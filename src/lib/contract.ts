@@ -687,7 +687,7 @@ export class MarketplaceContract {
   }
 
   async makeOffer(listingId: bigint, amount: bigint, paymentToken: string) {
-    if (!this.signer) throw new Error("Signer required for write operations");
+    // if (!this.signer) throw new Error("Signer required for write operations");
 
     // For GIGs with ERC20 payments, the offer proposer (client) needs to approve allowance upfront
     // because they will be the payer when the offer is accepted
