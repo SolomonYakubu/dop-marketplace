@@ -364,8 +364,8 @@ export async function loadListingMetadataFromURI(
 // Misc UI helpers
 export function getRpcUrl(chainId: number) {
   return chainId === 2741
-    ? "https://api.mainnet.abs.xyz"
-    : "https://api.testnet.abs.xyz";
+    ? process.env.NEXT_PUBLIC_RPC_URL_ABSTRACT
+    : process.env.NEXT_PUBLIC_RPC_URL_ABSTRACT_TESTNET;
 }
 
 export function timeAgo(tsSec: number) {

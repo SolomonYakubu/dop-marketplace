@@ -5,26 +5,36 @@ import { abstractWallet } from "@abstract-foundation/agw-react/connectors";
 import { defineChain } from "viem";
 import { http } from "wagmi";
 // Abstract chains
+const ABSTRACT_MAINNET_RPC_URL = process.env.NEXT_PUBLIC_RPC_URL_ABSTRACT;
+if (!ABSTRACT_MAINNET_RPC_URL) {
+  throw new Error("NEXT_PUBLIC_RPC_URL_ABSTRACT env var is required");
+}
 export const abstract = defineChain({
   id: 2741,
   name: "Abstract",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://api.mainnet.abs.xyz"] },
-    public: { http: ["https://api.mainnet.abs.xyz"] },
+    default: { http: [ABSTRACT_MAINNET_RPC_URL] },
+    public: { http: [ABSTRACT_MAINNET_RPC_URL] },
   },
   blockExplorers: {
     default: { name: "Abscan", url: "https://abscan.org" },
   },
 });
 
+const ABSTRACT_TESTNET_RPC_URL =
+  process.env.NEXT_PUBLIC_RPC_URL_ABSTRACT_TESTNET;
+if (!ABSTRACT_TESTNET_RPC_URL) {
+  throw new Error("NEXT_PUBLIC_RPC_URL_ABSTRACT_TESTNET env var is required");
+}
+
 export const abstractSepolia = defineChain({
   id: 11124,
   name: "Abstract Sepolia Testnet",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: {
-    default: { http: ["https://api.testnet.abs.xyz"] },
-    public: { http: ["https://api.testnet.abs.xyz"] },
+    default: { http: [ABSTRACT_TESTNET_RPC_URL] },
+    public: { http: [ABSTRACT_TESTNET_RPC_URL] },
   },
   blockExplorers: {
     default: { name: "Abscan", url: "https://sepolia.abscan.org" },
