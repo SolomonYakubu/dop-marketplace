@@ -25,13 +25,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased bg-black text-gray-100`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-full antialiased`}
       >
+        <div className="noise-layer" aria-hidden />
         <Providers>
           <Header />
-          <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+          <main className="relative mx-auto w-full max-w-7xl px-5 md:px-8 py-10 md:py-14">
             {children}
           </main>
         </Providers>

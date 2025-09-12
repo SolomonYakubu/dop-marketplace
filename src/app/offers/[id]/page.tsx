@@ -33,6 +33,18 @@ import {
   type OfferChatMessage,
   type OfferChatDocument,
 } from "@/lib/supabaseClient";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Hourglass,
+  Send as SendIcon,
+  Paperclip,
+  AlertTriangle,
+  MessageSquare,
+  RefreshCcw,
+  Star as StarIcon,
+  X as CloseIcon,
+} from "lucide-react";
 
 // Helpers for escrow labels (kept local; not in shared utils yet)
 function getEscrowStatusLabel(status: EscrowStatus) {
@@ -156,6 +168,28 @@ export default function OfferDetailsPage({
   const [chatLoading, setChatLoading] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  // Actions panel always visible now (removed show/hide state)
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
+  const [showFees, setShowFees] = useState(false);
+
+  // Helper: consistent token amount + symbol rendering
+  const displayToken = (
+    amount: bigint,
+    tokenAddr: string,
+    opts?: { fallbackSymbol?: string }
+  ) => {
+    return `${formatTokenAmount(amount, tokenAddr, {
+      tokens,
+      decimals:
+        knownDecimalsFor(tokenAddr, tokens) ??
+        (tokenAddr === ethers.ZeroAddress ? 18 : tokenDecimals),
+    })} ${
+      tokenSymbolFor(tokenAddr, tokens) !== "Token"
+        ? tokenSymbolFor(tokenAddr, tokens)
+        : opts?.fallbackSymbol || tokenSymbol
+    }`;
+  };
 
   const chainId = chain?.id ?? 11124;
   const provider = useMemo(
@@ -832,8 +866,8 @@ export default function OfferDetailsPage({
   const renderOfferActions = () => {
     if (!address) {
       return (
-        <div className="text-center text-gray-400 p-4 border border-gray-800 rounded">
-          Connect wallet to interact with this offer
+        <div className="text-center text-gray-400 p-3 border border-gray-800 rounded text-xs">
+          Connect wallet to interact
         </div>
       );
     }
@@ -842,217 +876,222 @@ export default function OfferDetailsPage({
       !isEth && needsApproval && !isClientWallet;
 
     return (
-      <div className="space-y-3">
-        {/* Accept flow */}
+      <div className="space-y-4">
+        {/* Acceptance */}
         {canAccept && (
-          <>
+          <div className="space-y-2">
             {!isEth && (
-              <div className="p-3 rounded border border-gray-800 text-xs text-gray-300">
-                Allowance:{" "}
-                {formatTokenAmount(allowance, offer!.paymentToken as string, {
-                  tokens,
-                  decimals:
-                    knownDecimalsFor(offer!.paymentToken as string, tokens) ??
-                    tokenDecimals,
-                })}{" "}
-                {tokenSymbol}
-                <br />
-                Required:{" "}
-                {formatTokenAmount(
-                  offer!.amount,
-                  offer!.paymentToken as string,
-                  {
-                    tokens,
-                    decimals:
-                      knownDecimalsFor(offer!.paymentToken as string, tokens) ??
-                      tokenDecimals,
-                  }
-                )}{" "}
-                {tokenSymbol}
+              <div className="p-3 rounded border border-gray-800 bg-gray-900/40 text-[11px] text-gray-300 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Allowance</span>
+                  <span className="text-white">
+                    {displayToken(allowance, offer!.paymentToken as string)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Required</span>
+                  <span className="text-white">
+                    {displayToken(offer!.amount, offer!.paymentToken as string)}
+                  </span>
+                </div>
               </div>
             )}
-
             {!isEth && isClientWallet && needsApproval && (
               <button
                 onClick={handleApprove}
                 disabled={approving}
-                className="w-full px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 transition-colors"
+                className="btn-primary w-full flex items-center justify-center gap-2"
               >
-                {approving ? "Approving..." : `Approve ${tokenSymbol}`}
+                {approving && <RefreshCcw className="w-4 h-4 animate-spin" />}{" "}
+                {approving ? "Approving" : `Approve ${tokenSymbol}`}
               </button>
             )}
-
             {needsClientApprovalNotice && (
-              <div className="text-xs text-yellow-400 p-2 border border-yellow-900 rounded">
-                Client must approve {tokenSymbol} allowance before acceptance.
+              <div className="text-xs text-yellow-400 p-2 border border-yellow-900 rounded flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" /> Client must approve{" "}
+                {tokenSymbol}
               </div>
             )}
-
             <button
               onClick={handleAcceptOffer}
               disabled={submitting || (!isEth && needsApproval)}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors"
+              className="w-full flex items-center justify-center gap-2 rounded bg-green-600 hover:bg-green-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
+              {submitting && <RefreshCcw className="w-4 h-4 animate-spin" />}
               {submitting
                 ? "Accepting..."
                 : isEth
-                ? `Accept Offer (send ${formatTokenAmount(
+                ? `Accept & Send ${displayToken(
                     offer!.amount,
-                    ethers.ZeroAddress,
-                    { decimals: 18 }
-                  )} ETH)`
+                    ethers.ZeroAddress
+                  )}`
                 : "Accept Offer"}
             </button>
-          </>
-        )}
-
-        {/* Proposer-side cancel for pending offers */}
-        {!offer?.accepted && !offer?.cancelled && isProposer && (
-          <button
-            onClick={handleCancelOffer}
-            disabled={submitting}
-            className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
-          >
-            {submitting ? "Cancelling..." : "Cancel Offer"}
-          </button>
-        )}
-
-        {/* Validation during escrow */}
-        {canValidate && (
-          <button
-            onClick={handleValidateWork}
-            disabled={submitting}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
-          >
-            {submitting ? "Validating..." : "Validate Work"}
-          </button>
-        )}
-
-        {/* Dispute / Refund */}
-        {canDispute && isClientWallet && (
-          <button
-            onClick={handleOpenDispute}
-            disabled={openingDispute}
-            className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 transition-colors"
-          >
-            {openingDispute ? "Preparing..." : "Request Refund"}
-          </button>
-        )}
-        {canDispute && !isClientWallet && isProviderWallet && (
-          <button
-            onClick={handleOpenDispute}
-            disabled={openingDispute}
-            className="w-full px-4 py-2 border border-red-500 text-red-400 rounded hover:bg-red-500/10 disabled:opacity-50 transition-colors"
-          >
-            {openingDispute ? "Preparing..." : "Open Dispute"}
-          </button>
-        )}
-
-        {/* Dispute form (toggle) */}
-        {showDisputeForm && (
-          <div className="mt-3 rounded border border-red-900 p-3 bg-red-950/20">
-            <div className="text-sm font-medium text-red-300 mb-2">
-              Open Dispute
-            </div>
-            <label className="block text-xs text-gray-400 mb-1">
-              Reason (optional)
-            </label>
-            <textarea
-              value={disputeReason}
-              onChange={(e) => setDisputeReason(e.target.value)}
-              rows={3}
-              placeholder={
-                isClientWallet
-                  ? "Describe why you request a refund..."
-                  : "Describe the issue..."
-              }
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
-            />
-            <label className="block text-xs text-gray-400 mb-1">
-              Attachments (optional)
-            </label>
-            <input
-              type="file"
-              multiple
-              onChange={(e) =>
-                setDisputeFiles(Array.from(e.target.files || []))
-              }
-              className="w-full text-xs text-gray-300"
-            />
-            {disputeFiles.length > 0 && (
-              <div className="text-xs text-gray-400 mt-1">
-                {disputeFiles.length} file(s) selected
-              </div>
-            )}
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={handleSubmitDisputeWithCID}
-                disabled={openingDispute}
-                className="flex-1 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm"
-              >
-                {openingDispute ? "Submitting..." : "Submit Dispute"}
-              </button>
-              <button
-                onClick={() => setShowDisputeForm(false)}
-                className="px-3 py-2 border border-white/10 rounded text-sm"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
         )}
 
-        {/* Appeal form (toggle) */}
-        {showAppealForm && (
-          <div className="mt-3 rounded border border-yellow-900 p-3 bg-yellow-950/10">
-            <div className="text-sm font-medium text-yellow-300 mb-2">
-              Submit Appeal
-            </div>
-            <label className="block text-xs text-gray-400 mb-1">
-              Reason (optional)
-            </label>
-            <textarea
-              value={appealReason}
-              onChange={(e) => setAppealReason(e.target.value)}
-              rows={3}
-              placeholder="Provide additional context/evidence..."
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
-            />
-            <label className="block text-xs text-gray-400 mb-1">
-              Attachments (optional)
-            </label>
-            <input
-              type="file"
-              multiple
-              onChange={(e) => setAppealFiles(Array.from(e.target.files || []))}
-              className="w-full text-xs text-gray-300"
-            />
-            {appealFiles.length > 0 && (
-              <div className="text-xs text-gray-400 mt-1">
-                {appealFiles.length} file(s) selected
+        {/* Accept flow */}
+        {/* Escrow management */}
+        <div className="space-y-2 pt-2 border-t border-gray-800">
+          {!offer?.accepted && !offer?.cancelled && isProposer && (
+            <button
+              onClick={handleCancelOffer}
+              disabled={submitting}
+              className="w-full flex items-center justify-center gap-2 rounded bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {submitting && <RefreshCcw className="w-4 h-4 animate-spin" />}
+              {submitting ? "Cancelling..." : "Cancel Offer"}
+            </button>
+          )}
+          {canValidate && (
+            <button
+              onClick={handleValidateWork}
+              disabled={submitting}
+              className="w-full flex items-center justify-center gap-2 rounded bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {submitting && <RefreshCcw className="w-4 h-4 animate-spin" />}
+              {submitting ? "Validating..." : "Validate Work"}
+            </button>
+          )}
+        </div>
+
+        {/* Disputes */}
+        {(canDispute || showDisputeForm || showAppealForm) && (
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            {canDispute && isClientWallet && (
+              <button
+                onClick={handleOpenDispute}
+                disabled={openingDispute}
+                className="w-full flex items-center justify-center gap-2 rounded bg-red-600 hover:bg-red-700 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {openingDispute && (
+                  <RefreshCcw className="w-4 h-4 animate-spin" />
+                )}
+                {openingDispute ? "Preparing..." : "Request Refund"}
+              </button>
+            )}
+            {canDispute && !isClientWallet && isProviderWallet && (
+              <button
+                onClick={handleOpenDispute}
+                disabled={openingDispute}
+                className="w-full flex items-center justify-center gap-2 rounded border border-red-500 text-red-400 hover:bg-red-500/10 px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                {openingDispute && (
+                  <RefreshCcw className="w-4 h-4 animate-spin" />
+                )}
+                {openingDispute ? "Preparing..." : "Open Dispute"}
+              </button>
+            )}
+
+            {/* Dispute form (toggle) */}
+            {showDisputeForm && (
+              <div className="mt-3 rounded border border-red-900 p-3 bg-red-950/20">
+                <div className="text-sm font-medium text-red-300 mb-2">
+                  Open Dispute
+                </div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Reason (optional)
+                </label>
+                <textarea
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    isClientWallet
+                      ? "Describe why you request a refund..."
+                      : "Describe the issue..."
+                  }
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
+                />
+                <label className="block text-xs text-gray-400 mb-1">
+                  Attachments (optional)
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) =>
+                    setDisputeFiles(Array.from(e.target.files || []))
+                  }
+                  className="w-full text-xs text-gray-300"
+                />
+                {disputeFiles.length > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {disputeFiles.length} file(s) selected
+                  </div>
+                )}
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={handleSubmitDisputeWithCID}
+                    disabled={openingDispute}
+                    className="flex-1 px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm"
+                  >
+                    {openingDispute ? "Submitting..." : "Submit Dispute"}
+                  </button>
+                  <button
+                    onClick={() => setShowDisputeForm(false)}
+                    className="px-3 py-2 border border-white/10 rounded text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
-            <div className="flex gap-2 mt-3">
-              <button
-                onClick={handleSubmitAppealWithCID}
-                disabled={appealing}
-                className="flex-1 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm"
-              >
-                {appealing ? "Submitting..." : "Submit Appeal"}
-              </button>
-              <button
-                onClick={() => setShowAppealForm(false)}
-                className="px-3 py-2 border border-white/10 rounded text-sm"
-              >
-                Cancel
-              </button>
-            </div>
+
+            {/* Appeal form (toggle) */}
+            {showAppealForm && (
+              <div className="mt-3 rounded border border-yellow-900 p-3 bg-yellow-950/10">
+                <div className="text-sm font-medium text-yellow-300 mb-2">
+                  Submit Appeal
+                </div>
+                <label className="block text-xs text-gray-400 mb-1">
+                  Reason (optional)
+                </label>
+                <textarea
+                  value={appealReason}
+                  onChange={(e) => setAppealReason(e.target.value)}
+                  rows={3}
+                  placeholder="Provide additional context/evidence..."
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm mb-3"
+                />
+                <label className="block text-xs text-gray-400 mb-1">
+                  Attachments (optional)
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) =>
+                    setAppealFiles(Array.from(e.target.files || []))
+                  }
+                  className="w-full text-xs text-gray-300"
+                />
+                {appealFiles.length > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    {appealFiles.length} file(s) selected
+                  </div>
+                )}
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={handleSubmitAppealWithCID}
+                    disabled={appealing}
+                    className="flex-1 px-3 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50 text-sm"
+                  >
+                    {appealing ? "Submitting..." : "Submit Appeal"}
+                  </button>
+                  <button
+                    onClick={() => setShowAppealForm(false)}
+                    className="px-3 py-2 border border-white/10 rounded text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {!isListingCreator && !isProposer && (
-          <div className="text-center text-gray-400 p-4 border border-gray-800 rounded">
-            You are not a party to this offer
+          <div className="text-center text-gray-400 p-3 border border-gray-800 rounded text-xs">
+            Not a party to this offer
           </div>
         )}
       </div>
@@ -1077,67 +1116,40 @@ export default function OfferDetailsPage({
     ];
 
     return (
-      <div className="container-panel p-6">
-        <h3 className="font-medium mb-4">Escrow Progress</h3>
-        <div className="space-y-3">
-          {steps.map((step) => (
-            <div key={step.key} className="flex items-center gap-3">
-              <div
-                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                  step.completed
-                    ? "bg-green-600 border-green-600"
-                    : "border-gray-600"
-                }`}
-              >
-                {step.completed && (
-                  <div className="w-2 h-2 bg-white rounded-full" />
-                )}
-              </div>
-              <span
-                className={`text-sm ${
-                  step.completed ? "text-white" : "text-gray-400"
-                }`}
-              >
-                {step.label}
-              </span>
-            </div>
+      <div className="container-panel p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          {steps.map((s) => (
+            <span
+              key={s.key}
+              className={`px-2 py-0.5 rounded-full border ${
+                s.completed
+                  ? "bg-green-500/15 border-green-500/30 text-green-300"
+                  : "border-gray-700 text-gray-500"
+              }`}
+            >
+              {s.label}
+            </span>
           ))}
         </div>
-
-        <div className="mt-4 pt-4 border-t border-gray-800 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Status:</span>
-            <span className="text-white">
-              {getEscrowStatusLabel(escrow.status)}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Client Validated:</span>
-            <span
-              className={
-                escrow.clientValidated ? "text-green-400" : "text-gray-400"
-              }
-            >
-              {escrow.clientValidated ? "✓ Yes" : "✗ No"}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Provider Validated:</span>
-            <span
-              className={
-                escrow.providerValidated ? "text-green-400" : "text-gray-400"
-              }
-            >
-              {escrow.providerValidated ? "✓ Yes" : "✗ No"}
-            </span>
-          </div>
+        <div className="flex flex-wrap gap-4 text-[11px] text-gray-400">
+          <span className="flex items-center gap-1">
+            {escrow.status === EscrowStatus.COMPLETED && (
+              <CheckCircle2 className="w-3 h-3 text-green-400" />
+            )}
+            {escrow.status === EscrowStatus.IN_PROGRESS && (
+              <Hourglass className="w-3 h-3 text-yellow-400" />
+            )}
+            {escrow.status === EscrowStatus.DISPUTED && (
+              <AlertTriangle className="w-3 h-3 text-red-400" />
+            )}
+            {getEscrowStatusLabel(escrow.status)}
+          </span>
+          <span>Client {escrow.clientValidated ? "✓" : "–"}</span>
+          <span>Provider {escrow.providerValidated ? "✓" : "–"}</span>
           {escrow.disputeOutcome !== DisputeOutcome.NONE && (
-            <div className="flex justify-between">
-              <span className="text-gray-400">Dispute Outcome:</span>
-              <span className="text-red-400">
-                {getDisputeOutcomeLabel(escrow.disputeOutcome)}
-              </span>
-            </div>
+            <span className="text-red-400">
+              {getDisputeOutcomeLabel(escrow.disputeOutcome)}
+            </span>
           )}
         </div>
       </div>
@@ -1306,8 +1318,11 @@ export default function OfferDetailsPage({
     const finished = escrow ? isEscrowFinished(escrow) : false;
 
     return (
-      <div className="container-panel p-6">
-        <h3 className="font-medium mb-4">Reviews</h3>
+      <div className="container-panel p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <StarIcon className="w-4 h-4 text-yellow-400" />
+          <h3 className="font-medium text-sm">Reviews</h3>
+        </div>
         {!finished && (
           <div className="text-sm text-gray-400">
             Reviews can be submitted after escrow completion.
@@ -1322,21 +1337,31 @@ export default function OfferDetailsPage({
               </div>
             ) : (
               <div className="space-y-3">
-                <div>
-                  <label className="block text-sm text-gray-300 mb-1">
-                    Rating
-                  </label>
-                  <select
-                    value={rating}
-                    onChange={(e) => setRating(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-800 rounded"
-                  >
-                    {[1, 2, 3, 4, 5].map((r) => (
-                      <option key={r} value={r}>
-                        {r} Star{r > 1 ? "s" : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="space-y-1">
+                  <label className="block text-sm text-gray-300">Rating</label>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: 5 }).map((_, idx) => {
+                      const val = idx + 1;
+                      const active = rating >= val;
+                      return (
+                        <button
+                          type="button"
+                          key={val}
+                          onClick={() => setRating(val)}
+                          className="p-1"
+                          aria-label={`Set rating ${val}`}
+                        >
+                          <StarIcon
+                            className={`w-5 h-5 ${
+                              active
+                                ? "text-yellow-400 fill-yellow-400"
+                                : "text-gray-600"
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm text-gray-300 mb-1">
@@ -1353,8 +1378,11 @@ export default function OfferDetailsPage({
                 <button
                   onClick={handleLeaveReview}
                   disabled={!canReview || leavingReview}
-                  className="w-full px-4 py-2 bg-white text-black rounded hover:opacity-90 disabled:opacity-50"
+                  className="w-full px-4 py-2 bg-white text-black rounded hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-medium"
                 >
+                  {leavingReview && (
+                    <RefreshCcw className="w-4 h-4 animate-spin" />
+                  )}
                   {leavingReview ? "Submitting..." : "Submit Review"}
                 </button>
               </div>
@@ -1368,8 +1396,12 @@ export default function OfferDetailsPage({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Link href="/offers" className="text-sm text-gray-400 hover:text-white">
-          ← Back to Offers
+        <Link
+          href="/offers"
+          className="group inline-flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+          Back
         </Link>
       </div>
 
@@ -1384,32 +1416,8 @@ export default function OfferDetailsPage({
       ) : offer && listing ? (
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            {/* Offer Details */}
+            {/* Offer Details (clean, minimal) */}
             <div className="container-panel p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-[11px] rounded-full border border-gray-800 px-2 py-0.5 text-gray-300">
-                  Offer #{String(offer.id)}
-                </span>
-                <span
-                  className={`text-[11px] rounded-full px-2 py-0.5 ${
-                    offer.accepted
-                      ? "border border-green-500/30 bg-green-400/20 text-green-300"
-                      : offer.cancelled
-                      ? "border border-red-500/30 bg-red-400/20 text-red-300"
-                      : "border border-yellow-500/30 bg-yellow-400/20 text-yellow-300"
-                  }`}
-                >
-                  {offer.accepted
-                    ? "Accepted"
-                    : offer.cancelled
-                    ? "Cancelled"
-                    : "Pending"}
-                </span>
-                <span className="ml-auto text-xs text-gray-400">
-                  {timeAgo(Number(offer.createdAt))}
-                </span>
-              </div>
-
               <div className="flex items-start gap-4 mb-4">
                 {cover && (
                   <Image
@@ -1427,202 +1435,121 @@ export default function OfferDetailsPage({
                     }}
                   />
                 )}
-                <h1 className="text-2xl font-semibold">
-                  Offer for &quot;
-                  {listingMetadata?.title ||
-                    `Listing #${String(listing.id)}`}{" "}
-                  &quot;
-                </h1>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6 mb-6">
-                <div>
-                  <h3 className="font-medium mb-2">Offer Amount</h3>
-                  <div className="text-2xl font-bold text-green-400">
-                    {`${formatTokenAmount(
-                      offer.amount,
-                      offer.paymentToken as string,
-                      {
-                        tokens,
-                        decimals:
-                          knownDecimalsFor(
-                            offer.paymentToken as string,
-                            tokens
-                          ) ?? (isEth ? 18 : tokenDecimals),
-                      }
-                    )} ${
-                      tokenSymbolFor(offer.paymentToken as string, tokens) !==
-                      "Token"
-                        ? tokenSymbolFor(offer.paymentToken as string, tokens)
-                        : tokenSymbol
-                    }`}
-                  </div>
-                  <div className="text-sm text-gray-400">
-                    Payment Token:{" "}
-                    {isEth ? "ETH (native)" : formatAddress(offer.paymentToken)}
-                  </div>
-
-                  {/* Estimated fees before acceptance */}
-                  {!offer.accepted && (
-                    <div className="mt-3 text-sm text-gray-300 space-y-1">
-                      <div className="flex justify-between">
-                        <span>Estimated Fee ({Number(feeBps) / 100}%):</span>
-                        <span className="text-white">
-                          {`${formatTokenAmount(
-                            estFee,
-                            offer.paymentToken as string,
-                            {
-                              tokens,
-                              decimals:
-                                knownDecimalsFor(
-                                  offer.paymentToken as string,
-                                  tokens
-                                ) ?? (isEth ? 18 : tokenDecimals),
-                            }
-                          )} ${
-                            tokenSymbolFor(
-                              offer.paymentToken as string,
-                              tokens
-                            ) !== "Token"
-                              ? tokenSymbolFor(
-                                  offer.paymentToken as string,
-                                  tokens
-                                )
-                              : tokenSymbol
-                          }`}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Provider Receives:</span>
-                        <span className="text-white">
-                          {`${formatTokenAmount(
-                            providerPayout,
-                            offer.paymentToken as string,
-                            {
-                              tokens,
-                              decimals:
-                                knownDecimalsFor(
-                                  offer.paymentToken as string,
-                                  tokens
-                                ) ?? (isEth ? 18 : tokenDecimals),
-                            }
-                          )} ${
-                            tokenSymbolFor(
-                              offer.paymentToken as string,
-                              tokens
-                            ) !== "Token"
-                              ? tokenSymbolFor(
-                                  offer.paymentToken as string,
-                                  tokens
-                                )
-                              : tokenSymbol
-                          }`}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <h3 className="font-medium mb-2">Parties</h3>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-400">Listing Creator:</span>{" "}
-                      {formatAddress(listing.creator)}
-                      {isListingCreator && (
-                        <span className="text-blue-400 ml-2">(You)</span>
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Offer Proposer:</span>{" "}
-                      {formatAddress(offer.proposer)}
-                      {isProposer && (
-                        <span className="text-blue-400 ml-2">(You)</span>
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Client (pays):</span>{" "}
-                      {clientAddress ? formatAddress(clientAddress) : "-"}
-                      {isClientWallet && (
-                        <span className="text-blue-400 ml-2">(You)</span>
-                      )}
-                    </div>
+                <div className="flex-1 min-w-0 space-y-1">
+                  <h1 className="text-xl font-semibold tracking-tight">
+                    {listingMetadata?.title || `Listing #${String(listing.id)}`}
+                  </h1>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-green-400 font-medium text-sm">
+                      {displayToken(offer.amount, offer.paymentToken as string)}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] ${
+                        offer.accepted
+                          ? "bg-green-500/15 text-green-300"
+                          : offer.cancelled
+                          ? "bg-red-500/15 text-red-300"
+                          : "bg-yellow-500/15 text-yellow-300"
+                      }`}
+                    >
+                      {offer.accepted
+                        ? "Accepted"
+                        : offer.cancelled
+                        ? "Cancelled"
+                        : "Pending"}
+                    </span>
+                    <span className="text-gray-500">
+                      {timeAgo(Number(offer.createdAt))}
+                    </span>
+                    <span className="text-gray-700">•</span>
+                    <button
+                      onClick={() => setShowFees((v) => !v)}
+                      className="underline decoration-dotted text-gray-400 hover:text-gray-200"
+                    >
+                      {showFees ? "Hide fees" : "Fees"}
+                    </button>
+                    <button
+                      onClick={() => setShowParticipants((v) => !v)}
+                      className="underline decoration-dotted text-gray-400 hover:text-gray-200"
+                    >
+                      {showParticipants ? "Hide participants" : "Participants"}
+                    </button>
+                    <button
+                      onClick={() => setShowAdvanced((v) => !v)}
+                      className="underline decoration-dotted text-gray-400 hover:text-gray-200"
+                    >
+                      {showAdvanced ? "Hide desc" : "Description"}
+                    </button>
                   </div>
                 </div>
               </div>
-
-              {listingMetadata?.description && (
-                <div>
-                  <h3 className="font-medium mb-2">Project Description</h3>
-                  <p className="text-gray-300 whitespace-pre-wrap">
-                    {listingMetadata.description}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Related Listing */}
-            <div className="container-panel p-6">
-              <h3 className="font-medium mb-3">Related Listing</h3>
-              <div className="border border-gray-800 rounded p-4">
-                <div className="flex gap-4">
-                  {cover && (
-                    <Image
-                      src={cover}
-                      alt={
-                        listingMetadata?.title ||
-                        `Listing #${String(listing.id)}`
-                      }
-                      width={64}
-                      height={64}
-                      className="w-16 h-16 object-cover rounded border border-gray-800 flex-shrink-0"
-                      unoptimized
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display =
-                          "none";
-                      }}
-                    />
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium">
-                        {listingMetadata?.title ||
-                          `Listing #${String(listing.id)}`}
-                      </h4>
-                      <span className="text-xs text-gray-400">
-                        {listing.listingType === 0 ? "Brief" : "Gig"}
+              <div className="space-y-4">
+                {showFees && !offer.accepted && (
+                  <div className="rounded border border-gray-800 p-3 text-xs space-y-1 bg-gray-900/40">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">
+                        Fee ({Number(feeBps) / 100}%)
+                      </span>
+                      <span className="text-white">
+                        {displayToken(estFee, offer.paymentToken as string)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-300 mb-3">
-                      {truncateText(
-                        listingMetadata?.description ||
-                          "No description available",
-                        150
-                      )}
-                    </p>
-                    <Link
-                      href={`/${
-                        listing.listingType === 0 ? "briefs" : "gigs"
-                      }/${String(listing.id)}`}
-                      className="text-sm text-blue-400 hover:underline"
-                    >
-                      View Full Listing →
-                    </Link>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Provider Receives</span>
+                      <span className="text-white">
+                        {displayToken(
+                          providerPayout,
+                          offer.paymentToken as string
+                        )}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
+                {showParticipants && (
+                  <div className="rounded border border-gray-800 p-3 text-xs space-y-1 bg-gray-900/40">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Listing Creator</span>
+                      <span className="text-white">
+                        {formatAddress(listing.creator)}
+                        {isListingCreator && " • you"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Proposer</span>
+                      <span className="text-white">
+                        {formatAddress(offer.proposer)}
+                        {isProposer && " • you"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Client</span>
+                      <span className="text-white">
+                        {clientAddress ? formatAddress(clientAddress) : "-"}
+                        {isClientWallet && " • you"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {showAdvanced && listingMetadata?.description && (
+                  <div className="rounded border border-gray-800 p-3 bg-gray-900/40 text-sm text-gray-300 whitespace-pre-wrap">
+                    {listingMetadata.description}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Chat (participants only) - JSON document model */}
-            <div className="container-panel p-6">
-              <h3 className="font-medium mb-4">Chat</h3>
+            <div className="container-panel p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageSquare className="w-4 h-4 text-gray-400" />
+                <h3 className="font-medium text-sm">Chat</h3>
+              </div>
               {!canUseChat && (
                 <div className="text-sm text-gray-400 mb-2">
                   Only offer participants may chat.
                 </div>
               )}
-              <div className="h-64 overflow-y-auto border border-gray-800 rounded p-3 space-y-2 text-sm bg-black/20">
+              <div className="h-64 overflow-y-auto border border-gray-800 rounded p-3 space-y-2 text-xs bg-black/30 thin-blue-scrollbar">
                 {chatLoading && (
                   <div className="text-gray-500 text-center mt-4 text-xs">
                     Loading…
@@ -1645,20 +1572,22 @@ export default function OfferDetailsPage({
                       }`}
                     >
                       <div
-                        className={`max-w-[70%] rounded px-3 py-2 whitespace-pre-wrap break-words text-xs sm:text-sm ${
+                        className={`max-w-[70%] rounded-lg px-3 py-2 whitespace-pre-wrap break-words shadow-sm ${
                           mine
                             ? "bg-blue-600 text-white"
                             : "bg-gray-800 text-gray-100"
                         }`}
                       >
                         {!mine && (
-                          <div className="text-[10px] uppercase tracking-wide opacity-60 mb-0.5">
+                          <div className="text-[9px] opacity-60 mb-0.5 font-medium">
                             {m.sender.slice(0, 6)}…{m.sender.slice(-4)}
                           </div>
                         )}
-                        {m.content && <div>{m.content}</div>}
+                        {m.content && (
+                          <div className="leading-relaxed">{m.content}</div>
+                        )}
                         {hasAttachments && (
-                          <div className="mt-2 space-y-2">
+                          <div className="mt-2 flex flex-wrap gap-2">
                             {m.attachments!.map((uri, idx) => {
                               const gateway = uri.startsWith("ipfs://")
                                 ? `https://ipfs.io/ipfs/${uri.replace(
@@ -1668,13 +1597,12 @@ export default function OfferDetailsPage({
                                 : uri;
                               const linkId = `${m.id}-att-${idx}`;
                               return (
-                                <div key={uri} className="group relative">
-                                  {/* Try image first; fallback to link */}
+                                <div key={uri} className="relative">
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img
                                     src={gateway}
                                     alt="attachment"
-                                    className="max-h-40 rounded border border-white/10 object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+                                    className="h-16 w-16 object-cover rounded border border-white/10 cursor-pointer hover:opacity-90 transition"
                                     onClick={() => setPreviewImage(gateway)}
                                     onError={(e) => {
                                       const img =
@@ -1689,7 +1617,7 @@ export default function OfferDetailsPage({
                                     href={gateway}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="underline break-all hidden text-[10px]"
+                                    className="hidden underline break-all text-[10px]"
                                   >
                                     {uri}
                                   </a>
@@ -1698,7 +1626,7 @@ export default function OfferDetailsPage({
                             })}
                           </div>
                         )}
-                        <div className="mt-1 text-[10px] opacity-50 text-right">
+                        <div className="mt-1 text-[9px] opacity-60 text-right">
                           {new Date(m.created_at).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
@@ -1718,59 +1646,77 @@ export default function OfferDetailsPage({
                   }}
                   className="mt-3 space-y-2"
                 >
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      placeholder="Type a message..."
-                      className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm"
-                      maxLength={4000}
-                    />
-                    <button
-                      type="submit"
-                      disabled={
-                        chatSending ||
-                        (!chatInput.trim() && chatFiles.length === 0)
-                      }
-                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
-                    >
-                      {chatSending ? "Sending…" : "Send"}
-                    </button>
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1 flex items-center gap-1 rounded border border-gray-800 bg-gray-900/60 px-2">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Type a message..."
+                        className="flex-1 bg-transparent outline-none py-2 text-sm"
+                        maxLength={4000}
+                      />
+                      <input
+                        id="chat-file-input"
+                        type="file"
+                        multiple
+                        onChange={(e) =>
+                          setChatFiles(Array.from(e.target.files || []))
+                        }
+                        className="hidden"
+                        accept="image/*"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          document.getElementById("chat-file-input")?.click()
+                        }
+                        className="text-gray-400 hover:text-white p-1"
+                        aria-label="Attach images"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={
+                          chatSending ||
+                          (!chatInput.trim() && chatFiles.length === 0)
+                        }
+                        className="text-blue-400 hover:text-blue-300 disabled:opacity-50 p-1"
+                        aria-label="Send message"
+                      >
+                        {chatSending ? (
+                          <RefreshCcw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <SendIcon className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    <input
-                      id="chat-file-input"
-                      type="file"
-                      multiple
-                      onChange={(e) =>
-                        setChatFiles(Array.from(e.target.files || []))
-                      }
-                      className="hidden"
-                      accept="image/*"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        document.getElementById("chat-file-input")?.click()
-                      }
-                      className="px-2 py-1 border border-gray-700 rounded hover:bg-gray-800"
-                    >
-                      Attach
-                    </button>
-                    {chatFiles.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span>{chatFiles.length} file(s)</span>
-                        <button
-                          type="button"
-                          onClick={() => setChatFiles([])}
-                          className="px-2 py-1 border border-gray-700 rounded hover:bg-gray-800"
+                  {chatFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
+                      {chatFiles.slice(0, 4).map((f) => (
+                        <span
+                          key={f.name}
+                          className="px-2 py-0.5 rounded bg-gray-800 border border-gray-700"
                         >
-                          Clear
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                          {f.name.slice(0, 12)}
+                        </span>
+                      ))}
+                      {chatFiles.length > 4 && (
+                        <span className="text-gray-500">
+                          +{chatFiles.length - 4} more
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setChatFiles([])}
+                        className="px-2 py-0.5 rounded border border-gray-700 hover:bg-gray-800"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                 </form>
               )}
             </div>
@@ -1785,10 +1731,9 @@ export default function OfferDetailsPage({
             {renderReviews()}
           </div>
 
-          <aside className="space-y-4">
-            {/* Actions */}
-            <div className="container-panel p-6">
-              <h3 className="font-medium mb-4">Actions</h3>
+          <aside className="space-y-4 lg:sticky top-4 h-fit">
+            <div className="container-panel p-4 space-y-3">
+              <h3 className="font-medium text-sm">Actions</h3>
               {renderOfferActions()}
             </div>
 
@@ -1892,27 +1837,78 @@ export default function OfferDetailsPage({
       />
 
       {/* Image Preview Lightbox */}
+      {/* Related Listing now at bottom for lower priority */}
+      {offer && listing && (
+        <div className="container-panel p-4">
+          <h3 className="font-medium mb-3">Related Listing</h3>
+          <div className="border border-gray-800 rounded p-4">
+            <div className="flex gap-4">
+              {cover && (
+                <Image
+                  src={cover}
+                  alt={
+                    listingMetadata?.title || `Listing #${String(listing.id)}`
+                  }
+                  width={64}
+                  height={64}
+                  className="w-16 h-16 object-cover rounded border border-gray-800 flex-shrink-0"
+                  unoptimized
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display =
+                      "none";
+                  }}
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium">
+                    {listingMetadata?.title || `Listing #${String(listing.id)}`}
+                  </h4>
+                  <span className="text-xs text-gray-400">
+                    {listing.listingType === 0 ? "Brief" : "Gig"}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-300 mb-3">
+                  {truncateText(
+                    listingMetadata?.description || "No description available",
+                    120
+                  )}
+                </p>
+                <Link
+                  href={`/${
+                    listing.listingType === 0 ? "briefs" : "gigs"
+                  }/${String(listing.id)}`}
+                  className="text-xs text-blue-400 hover:underline"
+                >
+                  View Full Listing →
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {previewImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
           onClick={() => setPreviewImage(null)}
         >
           <div
-            className="relative max-w-4xl max-h-full rounded border border-white/10 bg-black/40 backdrop-blur-sm p-3"
+            className="relative max-w-3xl max-h-full rounded border border-white/10 bg-black/60 backdrop-blur-sm p-3"
             onClick={(e) => e.stopPropagation()}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={previewImage}
               alt="preview"
-              className="max-h-[75vh] max-w-full object-contain"
+              className="max-h-[70vh] max-w-full object-contain"
             />
             <button
               onClick={() => setPreviewImage(null)}
-              className="absolute -top-3 -right-3 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-105 transition"
+              className="absolute -top-3 -right-3 bg-white text-black rounded-full w-7 h-7 flex items-center justify-center shadow"
               aria-label="Close preview"
             >
-              ✕
+              <CloseIcon className="w-4 h-4" />
             </button>
           </div>
         </div>

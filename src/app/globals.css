@@ -72,3 +72,22 @@ a:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Custom thin blue scrollbar (apply class .thin-blue-scrollbar where needed) */
+.thin-blue-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #2563eb transparent; /* thumb and track colors */
+}
+.thin-blue-scrollbar::-webkit-scrollbar {
+  width: 6px; /* Thin width */
+}
+.thin-blue-scrollbar::-webkit-scrollbar-track {
+  background: transparent; /* Transparent track */
+}
+.thin-blue-scrollbar::-webkit-scrollbar-thumb {
+  background: #2563eb; /* Blue thumb */
+  border-radius: 4px;
+}
+.thin-blue-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #1d4ed8; /* Darker on hover */
+}
