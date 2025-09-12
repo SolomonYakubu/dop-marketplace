@@ -24,6 +24,19 @@ import {
 import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { LoadingButton } from "@/components/Loading";
 import Image from "next/image";
+import {
+  ArrowLeft,
+  UserCircle2,
+  BadgeCheck,
+  Star,
+  Award,
+  Target,
+  History,
+  Rocket,
+  Briefcase,
+  MessageSquareQuote,
+  Link as LinkIcon,
+} from "lucide-react";
 
 // Minimal ERC-20 interface
 interface Erc20 {
@@ -56,18 +69,15 @@ export default function PublicProfilePage({
     [chainId]
   );
   const { contract } = useMarketplaceContract();
-
   const tokenAddresses = useMemo(() => getTokenAddresses(chainId), [chainId]);
   const toast = useToast();
   const { loading: boosting, execute } = useAsyncOperation();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [profile, setProfile] = useState<OnchainUserProfile | null>(null);
   const [profileMeta, setProfileMeta] = useState<ProfileMetadata | null>(null);
-  const [isBoosted, setIsBoosted] = useState<boolean>(false);
-
+  const [isBoosted, setIsBoosted] = useState(false);
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviews, setReviews] = useState<
     Array<{
@@ -77,59 +87,47 @@ export default function PublicProfilePage({
       timestamp?: number;
     }>
   >([]);
-
   const [missions, setMissions] = useState<Mission[]>([]);
   const [badges, setBadges] = useState<Badge[]>([]);
-
   const [listings, setListings] = useState<
-    Array<{
-      listing: Listing;
-      title: string;
-      cover?: string | null;
-    }>
+    Array<{ listing: Listing; title: string; cover?: string | null }>
   >([]);
-  // Pagination state
-  const REVIEWS_PAGE_SIZE = 10;
-  const LISTINGS_PAGE_SIZE = 6;
   const [allReviewsRaw, setAllReviewsRaw] = useState<RawReview[]>([]);
-  const [reviewsTotal, setReviewsTotal] = useState<number>(0);
+  const [reviewsTotal, setReviewsTotal] = useState(0);
   const [loadingMoreReviews, setLoadingMoreReviews] = useState(false);
   const [myListingRefs, setMyListingRefs] = useState<Listing[]>([]);
   const [loadingMoreListings, setLoadingMoreListings] = useState(false);
-
-  // Profile boost params and token info
   const [boostParams, setBoostParams] = useState<{
     price: bigint;
     duration: bigint;
   } | null>(null);
-  const [dopToken, setDopToken] = useState<string>("");
-  const [dopDecimals, setDopDecimals] = useState<number>(18);
+  const [dopToken, setDopToken] = useState("");
+  const [dopDecimals, setDopDecimals] = useState(18);
 
-  // Normalize profile skills
   const profileSkills = useMemo(
     () => (Array.isArray(profile?.skills) ? (profile!.skills as string[]) : []),
     [profile]
   );
-
   const isOwner =
     !!address &&
     !!resolvedParams.address &&
     address.toLowerCase() === resolvedParams.address.toLowerCase();
+  const REVIEWS_PAGE_SIZE = 10;
+  const LISTINGS_PAGE_SIZE = 6;
 
-  // Helper to parse a single review (handles data: and ipfs/http URIs)
   const parseReview = async (r: RawReview) => {
-    let text: string | undefined = undefined;
-    const uri: string = r.reviewURI;
+    let text: string | undefined;
+    const uri = r.reviewURI;
     try {
-      if (uri && uri.startsWith("data:")) {
+      if (uri?.startsWith("data:")) {
         const [, rest] = uri.split(",");
         if (rest) {
           const jsonStr = atob(rest);
           const obj = JSON.parse(jsonStr) as Record<string, unknown>;
           text =
-            (obj?.["text"] as string | undefined) ||
-            (obj?.["comment"] as string | undefined) ||
-            (obj?.["review"] as string | undefined) ||
+            (obj["text"] as string) ||
+            (obj["comment"] as string) ||
+            (obj["review"] as string) ||
             undefined;
         }
       } else if (uri) {
@@ -139,9 +137,9 @@ export default function PublicProfilePage({
         try {
           const obj = JSON.parse(t) as Record<string, unknown>;
           text =
-            (obj?.["text"] as string | undefined) ||
-            (obj?.["comment"] as string | undefined) ||
-            (obj?.["review"] as string | undefined) ||
+            (obj["text"] as string) ||
+            (obj["comment"] as string) ||
+            (obj["review"] as string) ||
             t;
         } catch {
           text = t;
@@ -157,8 +155,7 @@ export default function PublicProfilePage({
   };
 
   async function loadMoreReviews() {
-    if (loadingMoreReviews) return;
-    if (reviews.length >= allReviewsRaw.length) return;
+    if (loadingMoreReviews || reviews.length >= allReviewsRaw.length) return;
     setLoadingMoreReviews(true);
     try {
       const start = reviews.length;
@@ -184,13 +181,9 @@ export default function PublicProfilePage({
             try {
               const meta = JSON.parse(text) as Record<string, unknown>;
               title =
-                (meta?.["title"] as string) ||
-                (meta?.["name"] as string) ||
-                title;
+                (meta["title"] as string) || (meta["name"] as string) || title;
               const img =
-                (meta?.["image"] as string | undefined) ||
-                (meta?.["cover"] as string | undefined) ||
-                null;
+                (meta["image"] as string) || (meta["cover"] as string) || null;
               cover = toGatewayUrl(img || "") || img || null;
             } catch {}
           }
@@ -202,8 +195,7 @@ export default function PublicProfilePage({
   }
 
   async function loadMoreListings() {
-    if (loadingMoreListings) return;
-    if (listings.length >= myListingRefs.length) return;
+    if (loadingMoreListings || listings.length >= myListingRefs.length) return;
     setLoadingMoreListings(true);
     try {
       const start = listings.length;
@@ -217,41 +209,34 @@ export default function PublicProfilePage({
   }
 
   useEffect(() => {
-    async function load() {
+    (async function load() {
       setLoading(true);
       setError(null);
       try {
         const user = resolvedParams.address;
-
-        // Profile
         let p: OnchainUserProfile | null = null;
         try {
           const raw = (await contract!.getProfile(
             user
           )) as unknown as OnchainUserProfile;
           if (raw) {
+            const rawAny = raw as unknown as {
+              skills?: unknown;
+              portfolioURIs?: unknown;
+            };
             const normalized: OnchainUserProfile = {
               ...raw,
-              skills: Array.isArray(
-                (raw as unknown as { skills?: unknown }).skills
-              )
-                ? (raw as unknown as { skills?: string[] }).skills ?? []
+              skills: Array.isArray(rawAny.skills)
+                ? (rawAny.skills as string[])
                 : [],
-              portfolioURIs: Array.isArray(
-                (raw as unknown as { portfolioURIs?: unknown }).portfolioURIs
-              )
-                ? (raw as unknown as { portfolioURIs?: string[] })
-                    .portfolioURIs ?? []
+              portfolioURIs: Array.isArray(rawAny.portfolioURIs)
+                ? (rawAny.portfolioURIs as string[])
                 : [],
-              // ...existing fields preserved via spread
             };
             p = normalized;
             setProfile(normalized);
           }
         } catch {}
-
-        console.log("profile", p);
-        // Profile metadata (name/avatar/portfolio)
         if (p && Array.isArray(p.portfolioURIs) && p.portfolioURIs.length > 0) {
           try {
             const metaUrl = toGatewayUrl(p.portfolioURIs[0]);
@@ -267,19 +252,14 @@ export default function PublicProfilePage({
         } else {
           setProfileMeta(null);
         }
-
-        // Boosted status
         try {
           const boosted = await contract!.isProfileBoosted(user);
           setIsBoosted(!!boosted);
         } catch {}
-
-        // Rating + reviews
         try {
           const rating = await contract!.getAverageRating(user);
           setAvgRating(Number(rating));
           const rlist = (await contract!.getReviews(user)) as RawReview[];
-          // Newest first
           const all = (rlist || []).slice().reverse();
           setAllReviewsRaw(all);
           setReviewsTotal(all.length);
@@ -287,8 +267,6 @@ export default function PublicProfilePage({
           const parsed = await Promise.all(initial.map(parseReview));
           setReviews(parsed);
         } catch {}
-
-        // Missions and badges
         try {
           const m = await contract!.getMissionHistory(user);
           setMissions(m);
@@ -297,8 +275,6 @@ export default function PublicProfilePage({
           const b = await contract!.getUserBadges(user);
           setBadges(b);
         } catch {}
-
-        // Listings created by user
         try {
           const userListings = await contract!.getListingsByCreator(
             user,
@@ -306,13 +282,10 @@ export default function PublicProfilePage({
             120
           );
           setMyListingRefs(userListings);
-          // Enrich first page
           const topRefs = userListings.slice(0, LISTINGS_PAGE_SIZE);
           const enriched = await enrichListingsSlice(topRefs);
           setListings(enriched);
         } catch {}
-
-        // Fetch boost params and DOP token info
         try {
           const params = await contract!.getProfileBoostParams();
           setBoostParams(params);
@@ -334,14 +307,12 @@ export default function PublicProfilePage({
           }
         } catch {}
       } catch (e: unknown) {
-        const message =
-          e instanceof Error ? e.message : "Failed to load profile";
-        setError(message);
+        const msg = e instanceof Error ? e.message : "Failed to load profile";
+        setError(msg);
       } finally {
         setLoading(false);
       }
-    }
-    load();
+    })();
   }, [chainId, contract, provider, resolvedParams.address, tokenAddresses.DOP]);
 
   async function handleBuyBoost() {
@@ -349,15 +320,11 @@ export default function PublicProfilePage({
       toast.showError("Not allowed", "You can only boost your own profile.");
       return;
     }
-    if (!boostParams || !boostParams.price) {
+    if (!boostParams?.price) {
       toast.showError("Unavailable", "Boost parameters not available.");
       return;
     }
-
     const result = await execute(async () => {
-      // Use browser wallet for write
-
-      // Resolve DOP token address
       let dop = dopToken;
       if (!dop) {
         try {
@@ -365,131 +332,158 @@ export default function PublicProfilePage({
         } catch {}
       }
       if (!dop) throw new Error("DOP token address is not configured");
-
-      // Ensure allowance
       const erc20 = contract!.getErc20(dop) as unknown as Erc20;
-      const owner = address;
+      const owner = address!;
       const spender = contract!.contractAddress;
       const current: bigint = await erc20.allowance(owner, spender);
       if (current < boostParams.price) {
         const tx = await erc20.approve(spender, boostParams.price);
         await tx.wait?.();
       }
-
-      // Buy boost
       await contract!.buyProfileBoost(boostParams.price);
     });
-
     if (result !== null) {
       toast.showSuccess("Profile Boosted", "Your profile boost is now active.");
       setIsBoosted(true);
     }
   }
 
+  const disputes = useMemo(
+    () => missions.filter((m) => m.wasDisputed).length,
+    [missions]
+  );
+  const successRate = useMemo(
+    () =>
+      missions.length
+        ? Math.round(((missions.length - disputes) / missions.length) * 100)
+        : 0,
+    [missions, disputes]
+  );
+  const skillCount = profileSkills.length;
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <Link href="/gigs" className="text-sm text-gray-400 hover:text-white">
-          ← Back to Gigs
+    <div className="max-w-6xl mx-auto space-y-8">
+      <div className="flex items-center gap-3 text-xs text-gray-500">
+        <Link
+          href="/gigs"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-gray-800/60 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back
         </Link>
       </div>
-
       {loading ? (
-        <div className="container-panel p-6 animate-pulse space-y-4">
-          <div className="h-8 w-1/2 bg-gray-900/60 rounded" />
-          <div className="h-48 w-full bg-gray-900/60 rounded" />
-          <div className="h-4 w-full bg-gray-900/60 rounded" />
-          <div className="h-4 w-5/6 bg-gray-900/60 rounded" />
+        <div className="space-y-6 animate-pulse">
+          <div className="h-8 bg-gray-800/50 rounded w-1/3" />
+          <div className="grid lg:grid-cols-3 gap-8">
+            <div className="h-72 rounded-xl bg-gray-800/30" />
+            <div className="h-72 rounded-xl bg-gray-800/20 lg:col-span-2" />
+          </div>
         </div>
       ) : error ? (
-        <div className="container-panel p-6 text-sm text-red-400">{error}</div>
+        <div className="rounded-xl border border-red-500/30 bg-red-900/20 p-6 text-sm text-red-300">
+          {error}
+        </div>
       ) : (
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Profile Header */}
-            <div className="container-panel p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                {profileMeta?.avatar && (
+        <div className="grid lg:grid-cols-3 gap-8 items-start">
+          <div className="lg:col-span-2 space-y-8">
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
+              <div className="flex items-start gap-4">
+                {profileMeta?.avatar ? (
                   <Image
                     src={toGatewayUrl(profileMeta.avatar) || profileMeta.avatar}
                     alt="Avatar"
-                    width={64}
-                    height={64}
-                    className="w-16 h-16 rounded-full border border-gray-700"
+                    width={72}
+                    height={72}
+                    className="w-18 h-18 rounded-full border border-white/10 object-cover"
                     unoptimized
                   />
+                ) : (
+                  <div className="w-18 h-18 rounded-full border border-white/10 bg-gray-800 flex items-center justify-center">
+                    <UserCircle2 className="w-10 h-10 text-gray-500" />
+                  </div>
                 )}
-                <div>
-                  <h1 className="text-2xl font-semibold">
-                    {profileMeta?.name || formatAddress(resolvedParams.address)}
-                  </h1>
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                <div className="flex-1 min-w-0 space-y-2">
+                  <h1 className="text-2xl font-semibold tracking-tight flex flex-wrap items-center gap-3">
+                    <span className="truncate max-w-[260px]">
+                      {profileMeta?.name ||
+                        formatAddress(resolvedParams.address)}
+                    </span>
                     {profile?.isVerified && (
-                      <span className="text-green-400">✓ Verified</span>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 text-[11px] inline-flex items-center gap-1">
+                        <BadgeCheck className="w-3.5 h-3.5" />
+                        Verified
+                      </span>
                     )}
                     {isBoosted && (
-                      <span className="rounded-full border border-amber-500/30 bg-amber-400/20 px-2 py-0.5 text-amber-300 text-[11px]">
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] inline-flex items-center gap-1">
+                        <Rocket className="w-3.5 h-3.5" />
                         Boosted
                       </span>
                     )}
+                  </h1>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+                    <span className="px-2 py-0.5 rounded-full bg-gray-800/70">
+                      {skillCount} skills
+                    </span>
                     {avgRating !== null && (
-                      <span className="text-yellow-300">
-                        ★ {avgRating.toFixed(2)} avg
+                      <span className="px-2 py-0.5 rounded-full bg-gray-800/70 inline-flex items-center gap-1 text-yellow-300">
+                        <Star className="w-3 h-3" />
+                        {avgRating.toFixed(2)}
                       </span>
                     )}
+                    {profile?.portfolioURIs &&
+                      profile.portfolioURIs.length > 0 && (
+                        <Link
+                          href={
+                            toGatewayUrl(profile.portfolioURIs[0]) ||
+                            profile.portfolioURIs[0]
+                          }
+                          target="_blank"
+                          className="px-2 py-0.5 rounded-full bg-gray-800/70 inline-flex items-center gap-1 hover:text-white"
+                        >
+                          <LinkIcon className="w-3 h-3" />
+                          Portfolio
+                        </Link>
+                      )}
                   </div>
                 </div>
               </div>
-
-              {profile?.bio && <p className="text-gray-300">{profile.bio}</p>}
+              {profile?.bio && (
+                <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
+                  {profile.bio}
+                </p>
+              )}
               {profileSkills.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {profileSkills.map((s, i) => (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {profileSkills.slice(0, 12).map((s, i) => (
                     <span
-                      key={`sk-${i}`}
-                      className="text-[11px] rounded-full border border-gray-800 px-2 py-0.5 text-gray-400"
+                      key={i}
+                      className="px-2 py-0.5 rounded-full bg-gray-800/60 text-[10px] text-gray-300"
                     >
                       {s}
                     </span>
                   ))}
+                  {profileSkills.length > 12 && (
+                    <span className="text-[10px] text-gray-500">
+                      +{profileSkills.length - 12}
+                    </span>
+                  )}
                 </div>
               )}
-
-              {/* Portfolio (rich) */}
-
-              {profile?.portfolioURIs && profile.portfolioURIs.length > 0 && (
-                <Link
-                  href={
-                    toGatewayUrl(profile.portfolioURIs[0]) ||
-                    profile.portfolioURIs[0]
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
-                >
-                  View Portfolio
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                    />
-                  </svg>
-                </Link>
-              )}
             </div>
-
-            {/* Recent Gigs */}
-            <div className="container-panel p-6">
-              <h3 className="font-medium mb-4">Recent Gigs</h3>
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  <Briefcase className="w-4 h-4" /> Recent Gigs
+                </div>
+                {listings.length > 0 && (
+                  <span className="text-[11px] text-gray-500">
+                    {listings.length}/{myListingRefs.length}
+                  </span>
+                )}
+              </div>
               {listings.length === 0 ? (
-                <div className="text-sm text-gray-400">No gigs yet.</div>
+                <p className="text-xs text-gray-500">No gigs yet.</p>
               ) : (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -497,35 +491,35 @@ export default function PublicProfilePage({
                       <Link
                         key={idx}
                         href={`/gigs/${String(item.listing.id)}`}
-                        className="border border-gray-800 rounded hover:border-gray-700 transition-colors overflow-hidden"
+                        className="group rounded-lg border border-white/10 bg-gray-950/40 hover:border-white/20 transition-colors overflow-hidden flex flex-col"
                       >
                         {item.cover && (
                           <Image
                             src={item.cover}
                             alt={item.title}
-                            width={600}
-                            height={144}
-                            className="w-full h-36 object-cover border-b border-gray-800"
+                            width={640}
+                            height={160}
                             unoptimized
+                            className="w-full h-36 object-cover border-b border-white/10 group-hover:opacity-90 transition"
                           />
                         )}
-                        <div className="p-3">
-                          <div className="font-medium truncate">
+                        <div className="p-3 space-y-1">
+                          <p className="font-medium text-sm truncate text-gray-200">
                             {item.title}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
+                          </p>
+                          <p className="text-[11px] text-gray-500">
                             Created {timeAgo(Number(item.listing.createdAt))}
-                          </div>
+                          </p>
                         </div>
                       </Link>
                     ))}
                   </div>
                   {listings.length < myListingRefs.length && (
-                    <div className="mt-4 flex justify-center">
+                    <div className="pt-2">
                       <LoadingButton
                         onClick={loadMoreListings}
                         loading={loadingMoreListings}
-                        className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-gray-950/70 px-4 py-2 text-xs font-medium hover:bg-gray-900 disabled:opacity-40"
                       >
                         Load more gigs
                       </LoadingButton>
@@ -534,47 +528,55 @@ export default function PublicProfilePage({
                 </>
               )}
             </div>
-
-            {/* Reviews */}
-            <div className="container-panel p-6">
-              <h3 className="font-medium mb-4">Reviews</h3>
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  <MessageSquareQuote className="w-4 h-4" /> Reviews
+                </div>
+                {reviewsTotal > 0 && (
+                  <span className="text-[11px] text-gray-500">
+                    {reviews.length}/{reviewsTotal}
+                  </span>
+                )}
+              </div>
               {reviews.length === 0 ? (
-                <div className="text-sm text-gray-400">No reviews yet.</div>
+                <p className="text-xs text-gray-500">No reviews yet.</p>
               ) : (
                 <>
                   <div className="space-y-3">
                     {reviews.map((r, i) => (
                       <div
                         key={i}
-                        className="border border-gray-800 rounded p-3"
+                        className="rounded-lg border border-white/10 bg-gray-950/50 p-4 text-xs space-y-2"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="text-yellow-300">
-                            {"★".repeat(r.rating)}
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-1 text-yellow-300">
+                            <Star className="w-4 h-4 fill-yellow-300 text-yellow-300" />
+                            <span className="font-medium">{r.rating}</span>
                           </div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-[10px] text-gray-500">
                             {r.timestamp
                               ? timeAgo(Math.floor(r.timestamp))
                               : ""}
                           </div>
                         </div>
                         {r.text && (
-                          <p className="text-sm text-gray-300 mt-1">
+                          <p className="text-gray-300 leading-relaxed">
                             {truncateText(r.text, 180)}
                           </p>
                         )}
-                        <div className="text-xs text-gray-500 mt-1">
-                          Reviewer: {formatAddress(r.reviewer)}
+                        <div className="text-[10px] text-gray-500">
+                          Reviewer {formatAddress(r.reviewer)}
                         </div>
                       </div>
                     ))}
                   </div>
                   {reviews.length < reviewsTotal && (
-                    <div className="mt-4 flex justify-center">
+                    <div className="pt-2">
                       <LoadingButton
                         onClick={loadMoreReviews}
                         loading={loadingMoreReviews}
-                        className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-gray-950/70 px-4 py-2 text-xs font-medium hover:bg-gray-900 disabled:opacity-40"
                       >
                         Load more reviews
                       </LoadingButton>
@@ -584,68 +586,81 @@ export default function PublicProfilePage({
               )}
             </div>
           </div>
-
-          {/* Sidebar */}
-          <aside className="space-y-4">
-            {/* Mission Stats */}
-            <div className="container-panel p-6">
-              <h3 className="text-lg font-semibold mb-4">Mission Stats</h3>
-              <div className="space-y-2 text-sm">
+          <aside className="space-y-6">
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <Target className="w-4 h-4" /> Mission Stats
+              </div>
+              <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Total Missions:</span>
-                  <span className="font-semibold">{missions.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Disputed:</span>
-                  <span className="font-semibold text-red-400">
-                    {missions.filter((m) => m.wasDisputed).length}
+                  <span className="text-gray-500">Total</span>
+                  <span className="font-medium text-gray-200">
+                    {missions.length}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Success Rate:</span>
-                  <span className="font-semibold text-green-400">
-                    {missions.length > 0
-                      ? Math.round(
-                          ((missions.length -
-                            missions.filter((m) => m.wasDisputed).length) /
-                            missions.length) *
-                            100
-                        )
-                      : 0}
-                    %
+                  <span className="text-gray-500">Disputed</span>
+                  <span className="font-medium text-red-300">{disputes}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Success</span>
+                  <span className="font-medium text-emerald-300">
+                    {successRate}%
                   </span>
                 </div>
               </div>
+              {missions.length > 0 && (
+                <div className="pt-2 space-y-2">
+                  <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-gray-500">
+                    <History className="w-3 h-3" /> Recent
+                  </div>
+                  <div className="space-y-1">
+                    {missions.slice(0, 3).map((m, i) => (
+                      <div
+                        key={i}
+                        className="flex justify-between text-[10px] text-gray-400"
+                      >
+                        <span className="truncate">
+                          Escrow #{m.escrowId.toString()}
+                        </span>
+                        <span className="text-gray-500">
+                          {timeAgo(Number(m.completedAt))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Badges */}
-            <div className="container-panel p-6">
-              <h3 className="text-lg font-semibold mb-4">Badges</h3>
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <Award className="w-4 h-4" /> Badges
+              </div>
               {badges.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {badges.map((badge, index) => (
+                <div className="flex flex-wrap gap-1">
+                  {badges.map((badge, i) => (
                     <span
-                      key={index}
-                      className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs rounded-full"
+                      key={i}
+                      className="px-2 py-0.5 rounded-full bg-yellow-600/30 text-yellow-200 text-[10px] tracking-wide"
                     >
                       {Badge[badge] || "NONE"}
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-400 text-sm">No badges earned yet</p>
+                <p className="text-[11px] text-gray-500">No badges yet.</p>
               )}
             </div>
-
-            {/* Boost Profile (owner only) */}
             {isOwner && (
-              <div className="container-panel p-6 space-y-3">
-                <h3 className="text-lg font-semibold">Boost Profile</h3>
+              <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  <Rocket className="w-4 h-4" /> Boost Profile
+                </div>
                 {boostParams ? (
-                  <div className="text-sm text-gray-400">
+                  <div className="text-[11px] space-y-1 text-gray-400">
                     <div>
-                      Price:{" "}
-                      <span className="text-white font-medium">
+                      Price{" "}
+                      <span className="text-gray-200 font-medium">
                         {boostParams.price
                           ? formatTokenAmountWithSymbol(
                               boostParams.price,
@@ -658,46 +673,45 @@ export default function PublicProfilePage({
                       </span>
                     </div>
                     <div>
-                      Duration:{" "}
-                      <span className="text-white font-medium">
+                      Duration{" "}
+                      <span className="text-gray-200 font-medium">
                         {boostParams.duration
                           ? Math.round(Number(boostParams.duration) / 86400)
                           : 0}{" "}
-                        days
+                        d
                       </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-500">
-                    Loading boost parameters…
-                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    Loading parameters…
+                  </p>
                 )}
                 <LoadingButton
                   onClick={handleBuyBoost}
                   loading={boosting}
                   disabled={!boostParams || boosting}
-                  className="w-full px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors font-medium disabled:opacity-50"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-white text-black px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-40"
                 >
-                  Buy Boost
+                  {boosting ? "Processing…" : "Buy Boost"}
                 </LoadingButton>
-                <p className="text-xs text-gray-500">
-                  Boost increases your profile visibility for the listed
-                  duration.
+                <p className="text-[10px] text-gray-500 leading-relaxed">
+                  Boost increases profile visibility for the duration.
                 </p>
               </div>
             )}
-
-            {/* Contact / CTA */}
-            <div className="container-panel p-6 space-y-3">
-              <h3 className="text-lg font-semibold">Contact</h3>
-              <div className="text-sm text-gray-400">
-                Wallet: {formatAddress(resolvedParams.address)}
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <UserCircle2 className="w-4 h-4" /> Contact
               </div>
+              <p className="text-[11px] text-gray-400">
+                Wallet {formatAddress(resolvedParams.address)}
+              </p>
               <Link
                 href={`/create?prefill=brief&to=${encodeURIComponent(
                   resolvedParams.address
                 )}`}
-                className="block w-full text-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500/90 hover:bg-indigo-500 transition-colors px-4 py-2 text-xs font-medium text-white"
               >
                 Request Quote
               </Link>

@@ -5,6 +5,21 @@ import { useAccount } from "wagmi";
 
 import Link from "next/link";
 import Image from "next/image";
+import {
+  RefreshCcw,
+  CheckCircle2,
+  XCircle,
+  Hourglass,
+  ShieldCheck,
+  Handshake,
+  ArrowRight,
+  Eye,
+  FileCheck2,
+  CircleCheck,
+  Loader2,
+  ArrowLeft,
+} from "lucide-react";
+import clsx from "clsx";
 import { getTokenAddresses } from "@/lib/contract";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { Offer, Escrow, EscrowStatus } from "@/types/marketplace";
@@ -24,42 +39,121 @@ interface OfferWithListing extends Offer {
   listingImage?: string;
 }
 
-function getEscrowStatusLabel(status: EscrowStatus) {
-  switch (status) {
-    case EscrowStatus.NONE:
-      return "None";
-    case EscrowStatus.IN_PROGRESS:
-      return "In Progress";
-    case EscrowStatus.COMPLETED:
-      return "Completed";
-    case EscrowStatus.DISPUTED:
-      return "Disputed";
-    case EscrowStatus.RESOLVED:
-      return "Resolved";
-    case EscrowStatus.CANCELLED:
-      return "Cancelled";
-    default:
-      return "Unknown";
-  }
+// ---- UI helpers (local design primitives) ----
+const badgeBase =
+  "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium tracking-wide";
+const btnBase =
+  "inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
+
+const escrowMeta: Record<EscrowStatus, { label: string; className: string }> = {
+  [EscrowStatus.NONE]: {
+    label: "None",
+    className: "text-gray-400 bg-gray-500/15",
+  },
+  [EscrowStatus.IN_PROGRESS]: {
+    label: "In Progress",
+    className: "text-blue-400 bg-blue-500/15",
+  },
+  [EscrowStatus.COMPLETED]: {
+    label: "Completed",
+    className: "text-green-400 bg-green-500/15",
+  },
+  [EscrowStatus.DISPUTED]: {
+    label: "Disputed",
+    className: "text-red-400 bg-red-500/15",
+  },
+  [EscrowStatus.RESOLVED]: {
+    label: "Resolved",
+    className: "text-purple-400 bg-purple-500/15",
+  },
+  [EscrowStatus.CANCELLED]: {
+    label: "Cancelled",
+    className: "text-gray-400 bg-gray-500/15",
+  },
+};
+
+function EscrowBadge({ status }: { status: EscrowStatus }) {
+  const meta = escrowMeta[status];
+  return (
+    <span className={clsx(badgeBase, meta.className)}>
+      <FileCheck2 className="w-3.5 h-3.5" /> {meta.label}
+    </span>
+  );
 }
 
-function getEscrowStatusColor(status: EscrowStatus) {
-  switch (status) {
-    case EscrowStatus.NONE:
-      return "text-gray-400 bg-gray-400/20";
-    case EscrowStatus.IN_PROGRESS:
-      return "text-blue-400 bg-blue-400/20";
-    case EscrowStatus.COMPLETED:
-      return "text-green-400 bg-green-400/20";
-    case EscrowStatus.DISPUTED:
-      return "text-red-400 bg-red-400/20";
-    case EscrowStatus.RESOLVED:
-      return "text-purple-400 bg-purple-400/20";
-    case EscrowStatus.CANCELLED:
-      return "text-gray-400 bg-gray-400/20";
-    default:
-      return "text-gray-400 bg-gray-400/20";
-  }
+type OfferStatusType = "accepted" | "cancelled" | "pending";
+const offerStatusMeta: Record<
+  OfferStatusType,
+  { label: string; icon: React.ReactNode; className: string }
+> = {
+  accepted: {
+    label: "Accepted",
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    className: "bg-green-500/15 text-green-400",
+  },
+  cancelled: {
+    label: "Cancelled",
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    className: "bg-red-500/15 text-red-400",
+  },
+  pending: {
+    label: "Pending",
+    icon: <Hourglass className="w-3.5 h-3.5" />,
+    className: "bg-yellow-500/15 text-yellow-400",
+  },
+};
+
+function OfferPrimaryBadge({ offer }: { offer: OfferWithListing }) {
+  const status: OfferStatusType = offer.accepted
+    ? "accepted"
+    : offer.cancelled
+    ? "cancelled"
+    : "pending";
+  const meta = offerStatusMeta[status];
+  return (
+    <span className={clsx(badgeBase, meta.className)}>
+      {meta.icon} {meta.label}
+    </span>
+  );
+}
+
+const roleBadgeClass = "bg-gray-700/60 text-gray-200";
+function RoleBadge({ sent }: { sent: boolean }) {
+  return (
+    <span className={clsx(badgeBase, roleBadgeClass)}>
+      {sent ? "Sent" : "Received"}
+    </span>
+  );
+}
+
+type TokenMap = Record<string, string | undefined>;
+function Amount({
+  value,
+  token,
+  tokens,
+}: {
+  value: bigint;
+  token: string;
+  tokens: TokenMap;
+}) {
+  return <>{formatTokenAmountWithSymbol(value, token, { tokens })}</>;
+}
+
+function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-gray-500 mb-0.5">{label}</p>
+      <p
+        className={
+          typeof value === "string"
+            ? "text-gray-200 font-medium"
+            : "text-gray-200"
+        }
+      >
+        {value}
+      </p>
+    </div>
+  );
 }
 
 export default function OffersPage() {
@@ -322,11 +416,16 @@ export default function OffersPage() {
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-800 rounded w-1/3"></div>
-          <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-800 rounded"></div>
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading offers...
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-40 rounded-xl border border-white/5 bg-gradient-to-b from-gray-900/60 to-gray-900/20 animate-pulse"
+              />
             ))}
           </div>
         </div>
@@ -351,12 +450,36 @@ export default function OffersPage() {
   }
 
   type FilterType = typeof filter;
-  const filterOptions: { value: FilterType; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "sent", label: "Sent by Me" },
-    { value: "received", label: "Received" },
-    { value: "active", label: "Active Contracts" },
-    { value: "completed", label: "Completed" },
+  const filterOptions: {
+    value: FilterType;
+    label: string;
+    icon: React.ReactNode;
+  }[] = [
+    {
+      value: "all",
+      label: "All",
+      icon: <ArrowRight className="w-3.5 h-3.5" />,
+    },
+    {
+      value: "sent",
+      label: "Sent",
+      icon: <ArrowRight className="w-3.5 h-3.5 rotate-45" />,
+    },
+    {
+      value: "received",
+      label: "Received",
+      icon: <ArrowLeft className="w-3.5 h-3.5" />,
+    },
+    {
+      value: "active",
+      label: "Active",
+      icon: <Handshake className="w-3.5 h-3.5" />,
+    },
+    {
+      value: "completed",
+      label: "Completed",
+      icon: <ShieldCheck className="w-3.5 h-3.5" />,
+    },
   ];
 
   const toggleExpanded = (idStr: string) =>
@@ -365,58 +488,60 @@ export default function OffersPage() {
   return (
     <>
       <div className="max-w-6xl mx-auto p-6">
-        <div className="flex items-center justify-between mb-4 sm:mb-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">
-              Offers & Contracts
-            </h1>
-            <p className="text-gray-400 text-sm sm:text-base">
-              Manage your offers and active contracts
-            </p>
-          </div>
-          <Link
-            href="/browse"
-            className="px-3 py-2 sm:px-4 sm:py-2 bg-white text-black rounded-lg hover:opacity-90 text-sm sm:text-base whitespace-nowrap"
-          >
-            Browse Listings
-          </Link>
-        </div>
-
-        {/* Filters - sticky and horizontally scrollable on mobile */}
-        <div className="sticky top-0 z-10 -mx-6 px-6 py-3 mb-4 sm:mb-6 bg-black/60 supports-[backdrop-filter]:bg-black/30 backdrop-blur border-b border-gray-800">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 overflow-x-auto">
-              <div className="flex gap-2 min-w-max">
-                {filterOptions.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    onClick={() => setFilter(value)}
-                    className={`px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap ${
-                      filter === value
-                        ? "bg-white text-black"
-                        : "border border-gray-700 text-gray-300 hover:border-gray-600"
-                    }`}
-                    aria-pressed={filter === value}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+        <div className="flex flex-col gap-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-semibold tracking-tight">Offers</h1>
+              <p className="text-sm text-gray-400">
+                Track proposals and contracts in one clean dashboard.
+              </p>
             </div>
-            <button
-              onClick={loadOffers}
-              className="px-3 py-2 rounded-lg text-sm border border-gray-700 hover:border-gray-600"
-              title="Refresh"
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/browse"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white text-black px-4 py-2 text-sm font-medium hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-white/20"
+              >
+                <ArrowRight className="w-4 h-4" /> Browse
+              </Link>
+              <button
+                onClick={loadOffers}
+                className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-gray-900 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-white/10"
+              >
+                <RefreshCcw className="w-4 h-4" /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex overflow-x-auto gap-2 pb-1 -mx-1 px-1">
+            {filterOptions.map(({ value, label, icon }) => {
+              const active = filter === value;
+              return (
+                <button
+                  key={value}
+                  onClick={() => setFilter(value)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs sm:text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 whitespace-nowrap ${
+                    active
+                      ? "bg-white text-black border-white"
+                      : "border-white/10 bg-gray-900/40 text-gray-300 hover:bg-gray-800/70"
+                  }`}
+                >
+                  {icon}
+                  {label}
+                </button>
+              );
+            })}
+            <div className="ml-auto hidden sm:flex items-center text-xs text-gray-500">
+              {filteredOffers.length} result
+              {filteredOffers.length === 1 ? "" : "s"}
+            </div>
           </div>
         </div>
 
-        {/* Results count */}
-        <div className="mb-4 text-sm text-gray-400">
-          {filteredOffers.length} offer{filteredOffers.length !== 1 ? "s" : ""}{" "}
-          found
+        {/* Compact results count (mobile) */}
+        <div className="sm:hidden mb-4 text-xs text-gray-500">
+          {filteredOffers.length} result{filteredOffers.length === 1 ? "" : "s"}
         </div>
 
         {/* Offers List */}
@@ -439,10 +564,13 @@ export default function OffersPage() {
                 address?.toLowerCase() === offer.proposer.toLowerCase();
 
               return (
-                <div key={idStr} className="group container-panel p-4 sm:p-6">
-                  <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
+                <div
+                  key={idStr}
+                  className="group rounded-xl border border-white/5 bg-gradient-to-b from-gray-900/70 to-gray-900/30 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex flex-col md:flex-row md:items-start gap-5">
                     {/* Media / Listing Image */}
-                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 flex-shrink-0 rounded-lg overflow-hidden border border-gray-800 bg-gray-900">
+                    <div className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 flex-shrink-0 rounded-lg overflow-hidden border border-white/10 bg-gray-900">
                       {offer.listingImage ? (
                         <Image
                           src={offer.listingImage}
@@ -452,7 +580,7 @@ export default function OffersPage() {
                           }
                           fill
                           sizes="(max-width: 768px) 96px, 128px"
-                          className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
                           unoptimized
                           onError={(e) => {
                             (
@@ -479,47 +607,29 @@ export default function OffersPage() {
                         </div>
                       )}
                       {/* subtle overlays */}
-                      <div className="absolute inset-0 ring-1 ring-white/10 group-hover:ring-blue-500/30" />
+                      <div className="absolute inset-0 ring-1 ring-white/10 group-hover:ring-white/30" />
                       <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
                     </div>
 
                     {/* Main content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-3">
-                        <span className="px-2 py-1 bg-gray-800 text-gray-300 text-xs rounded-full">
+                        <span
+                          className={clsx(
+                            badgeBase,
+                            "bg-gray-800/80 text-gray-300"
+                          )}
+                        >
                           #{idStr}
                         </span>
-
-                        {offer.accepted ? (
-                          <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full">
-                            ✓ Accepted
-                          </span>
-                        ) : offer.cancelled ? (
-                          <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full">
-                            ✗ Cancelled
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">
-                            ⏳ Pending
-                          </span>
-                        )}
-
+                        <OfferPrimaryBadge offer={offer} />
                         {offer.escrow && (
-                          <span
-                            className={`px-2 py-1 text-xs rounded-full ${getEscrowStatusColor(
-                              offer.escrow.status
-                            )}`}
-                          >
-                            {getEscrowStatusLabel(offer.escrow.status)}
-                          </span>
+                          <EscrowBadge status={offer.escrow.status} />
                         )}
-
-                        <span className="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded-full">
-                          {isSender ? "Sent" : "Received"}
-                        </span>
+                        <RoleBadge sent={isSender} />
                       </div>
 
-                      <h3 className="text-lg sm:text-xl font-semibold mb-2 break-words">
+                      <h3 className="text-lg sm:text-xl font-semibold mb-2 break-words leading-tight">
                         <Link
                           href={`/briefs/${offer.listingId.toString()}`}
                           className="hover:text-gray-300 transition-colors"
@@ -544,35 +654,37 @@ export default function OffersPage() {
 
                       {/* Detail grid: visible on md+, toggle on mobile */}
                       <div
-                        className={`grid sm:grid-cols-2 gap-4 text-sm mb-3 ${
+                        className={`grid sm:grid-cols-2 gap-4 text-[13px] mb-3 ${
                           isExpanded ? "" : "hidden md:grid"
                         }`}
                       >
-                        <div>
-                          <p className="text-gray-400">Proposer:</p>
-                          <p>{formatAddress(offer.proposer)}</p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400">Listing Creator:</p>
-                          <p>
-                            {offer.listingCreator &&
-                              formatAddress(offer.listingCreator)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400">Amount:</p>
-                          <p className="font-semibold">
-                            {formatTokenAmountWithSymbol(
-                              offer.amount,
-                              offer.paymentToken,
-                              { tokens }
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400">Created:</p>
-                          <p>{timeAgo(Number(offer.createdAt))}</p>
-                        </div>
+                        <DataRow
+                          label="Proposer"
+                          value={formatAddress(offer.proposer)}
+                        />
+                        <DataRow
+                          label="Creator"
+                          value={
+                            offer.listingCreator &&
+                            formatAddress(offer.listingCreator)
+                          }
+                        />
+                        <DataRow
+                          label="Amount"
+                          value={
+                            <span className="font-semibold text-gray-100">
+                              <Amount
+                                value={offer.amount}
+                                token={offer.paymentToken}
+                                tokens={tokens}
+                              />
+                            </span>
+                          }
+                        />
+                        <DataRow
+                          label="Created"
+                          value={timeAgo(Number(offer.createdAt))}
+                        />
                       </div>
 
                       {/* Toggle details button on mobile */}
@@ -586,59 +698,65 @@ export default function OffersPage() {
 
                       {/* Escrow Details */}
                       {offer.escrow && (
-                        <div className="mt-4 p-4 bg-gray-900/50 rounded-lg">
-                          <h4 className="font-semibold mb-2">
-                            Contract Details
+                        <div className="mt-4 p-4 rounded-lg border border-white/5 bg-gray-900/40">
+                          <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm tracking-wide uppercase text-gray-300">
+                            <Handshake className="w-4 h-4" /> Contract
                           </h4>
-                          <div className="grid sm:grid-cols-3 gap-4 text-sm">
-                            <div>
-                              <p className="text-gray-400">Contract Amount:</p>
-                              <p>
-                                {formatTokenAmountWithSymbol(
-                                  offer.escrow.amount,
-                                  offer.escrow.paymentToken,
-                                  { tokens }
-                                )}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-400">Fee:</p>
-                              <p>
-                                {formatTokenAmountWithSymbol(
-                                  offer.escrow.feeAmount,
-                                  offer.escrow.paymentToken,
-                                  { tokens }
-                                )}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-400">Status:</p>
-                              <p>{getEscrowStatusLabel(offer.escrow.status)}</p>
-                            </div>
+                          <div className="grid sm:grid-cols-3 gap-4 text-[13px]">
+                            <DataRow
+                              label="Amount"
+                              value={
+                                <span className="font-medium text-gray-100">
+                                  <Amount
+                                    value={offer.escrow.amount}
+                                    token={offer.escrow.paymentToken}
+                                    tokens={tokens}
+                                  />
+                                </span>
+                              }
+                            />
+                            <DataRow
+                              label="Fee"
+                              value={
+                                <span className="text-gray-200">
+                                  <Amount
+                                    value={offer.escrow.feeAmount}
+                                    token={offer.escrow.paymentToken}
+                                    tokens={tokens}
+                                  />
+                                </span>
+                              }
+                            />
+                            <DataRow
+                              label="Status"
+                              value={escrowMeta[offer.escrow.status].label}
+                            />
                           </div>
-
                           {offer.escrow.status === EscrowStatus.IN_PROGRESS && (
-                            <div className="mt-3 flex items-center gap-4 text-sm">
-                              <div className="flex items-center">
-                                <span
-                                  className={`w-2 h-2 rounded-full mr-2 ${
-                                    offer.escrow.clientValidated
-                                      ? "bg-green-500"
-                                      : "bg-gray-600"
-                                  }`}
-                                ></span>
-                                Client Validated
-                              </div>
-                              <div className="flex items-center">
-                                <span
-                                  className={`w-2 h-2 rounded-full mr-2 ${
-                                    offer.escrow.providerValidated
-                                      ? "bg-green-500"
-                                      : "bg-gray-600"
-                                  }`}
-                                ></span>
-                                Provider Validated
-                              </div>
+                            <div className="mt-3 flex flex-wrap items-center gap-4 text-[12px] text-gray-300">
+                              {[
+                                {
+                                  label: "Client",
+                                  active: offer.escrow.clientValidated,
+                                },
+                                {
+                                  label: "Provider",
+                                  active: offer.escrow.providerValidated,
+                                },
+                              ].map((r) => (
+                                <div
+                                  key={r.label}
+                                  className="flex items-center gap-1"
+                                >
+                                  <span
+                                    className={clsx(
+                                      "w-2 h-2 rounded-full",
+                                      r.active ? "bg-green-500" : "bg-gray-600"
+                                    )}
+                                  />
+                                  {r.label}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -646,7 +764,7 @@ export default function OffersPage() {
                     </div>
 
                     {/* Actions */}
-                    <div className="w-full mt-3 pt-3 border-t border-gray-800 md:w-56 md:mt-0 md:pt-0 md:pl-6 md:border-t-0 md:border-l md:border-gray-800 md:sticky md:top-4">
+                    <div className="w-full mt-4 pt-4 border-t border-white/5 md:w-60 md:mt-0 md:pt-0 md:pl-6 md:border-t-0 md:border-l md:border-white/5 md:sticky md:top-4">
                       <div className="space-y-2">
                         {!offer.accepted &&
                           !offer.cancelled &&
@@ -656,11 +774,22 @@ export default function OffersPage() {
                               onClick={() => acceptOffer(offer.id)}
                               disabled={actionLoading === idStr}
                               aria-busy={actionLoading === idStr}
-                              className="w-full h-10 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                              className={clsx(
+                                btnBase,
+                                "w-full bg-green-600 hover:bg-green-500 text-white"
+                              )}
                             >
-                              {actionLoading === idStr
-                                ? "Accepting..."
-                                : "Accept Offer"}
+                              {actionLoading === idStr ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                                  Accepting
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4" /> Accept
+                                  Offer
+                                </>
+                              )}
                             </button>
                           )}
 
@@ -669,11 +798,18 @@ export default function OffersPage() {
                             onClick={() => cancelOffer(offer.id)}
                             disabled={actionLoading === `cancel-${idStr}`}
                             aria-busy={actionLoading === `cancel-${idStr}`}
-                            className="w-full h-10 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                            className="w-full inline-flex items-center justify-center gap-2 h-10 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-500 disabled:opacity-50 text-sm font-medium"
                           >
-                            {actionLoading === `cancel-${idStr}`
-                              ? "Cancelling..."
-                              : "Cancel Offer"}
+                            {actionLoading === `cancel-${idStr}` ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                                Cancelling
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="w-4 h-4" /> Cancel Offer
+                              </>
+                            )}
                           </button>
                         )}
 
@@ -694,11 +830,19 @@ export default function OffersPage() {
                                   aria-busy={
                                     actionLoading === `validate-${idStr}`
                                   }
-                                  className="w-full h-10 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                  className="w-full inline-flex items-center justify-center gap-2 h-10 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50 text-sm font-medium"
                                 >
-                                  {actionLoading === `validate-${idStr}`
-                                    ? "Validating..."
-                                    : "Validate Work"}
+                                  {actionLoading === `validate-${idStr}` ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                                      Validating
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CircleCheck className="w-4 h-4" />{" "}
+                                      Validate Work
+                                    </>
+                                  )}
                                 </button>
                               )}
                           </div>
@@ -706,9 +850,12 @@ export default function OffersPage() {
 
                         <Link
                           href={`/offers/${idStr}`}
-                          className="block w-full h-10 px-4 py-2 border border-gray-700 text-center rounded-lg hover:border-gray-600 transition-colors"
+                          className={clsx(
+                            btnBase,
+                            "w-full border border-white/10 hover:border-gray-400/40 text-gray-200 hover:text-white bg-transparent"
+                          )}
                         >
-                          View Details
+                          <Eye className="w-4 h-4" /> View Details
                         </Link>
                       </div>
                     </div>

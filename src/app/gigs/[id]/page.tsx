@@ -33,6 +33,17 @@ import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { ToastContainer } from "@/components/Toast";
 import { LoadingButton } from "@/components/Loading";
 import { EscrowStatus } from "@/types/marketplace";
+import {
+  Sparkles,
+  Tag as TagIcon,
+  Star,
+  Clock3,
+  Package,
+  FileText,
+  User2,
+  ArrowLeft,
+  Loader2,
+} from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
 // Types for UI state
@@ -456,6 +467,89 @@ export default function GigDetailsPage({
     load();
   }, [chainId, resolvedParams.id, address, contract]);
 
+  // UI primitives -----------------------------------------------------------
+  const badgeBase =
+    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium tracking-wide";
+  const badgeVariants: Record<string, string> = {
+    neutral: "bg-gray-800/70 text-gray-300",
+    outline: "border border-white/10 text-gray-300",
+    boosted: "bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/30",
+    inactive: "bg-red-500/15 text-red-400",
+    success: "bg-green-500/15 text-green-400",
+    warning: "bg-yellow-500/15 text-yellow-400",
+  };
+  const Badge = ({
+    children,
+    variant = "neutral",
+    className = "",
+  }: {
+    children: React.ReactNode;
+    variant?: keyof typeof badgeVariants | string;
+    className?: string;
+  }) => (
+    <span
+      className={`${badgeBase} ${
+        badgeVariants[variant] || badgeVariants.neutral
+      } ${className}`.trim()}
+    >
+      {children}
+    </span>
+  );
+
+  const SectionCard = ({
+    title,
+    icon,
+    actions,
+    children,
+    className = "",
+  }: {
+    title?: React.ReactNode;
+    icon?: React.ReactNode;
+    actions?: React.ReactNode;
+    children: React.ReactNode;
+    className?: string;
+  }) => (
+    <div className={`container-panel p-6 space-y-4 ${className}`.trim()}>
+      {(title || actions) && (
+        <div className="flex items-center gap-2 mb-1">
+          {icon && (
+            <span className="text-gray-400 w-4 h-4 flex items-center justify-center">
+              {icon}
+            </span>
+          )}
+          {title && (
+            <h3 className="font-medium text-sm tracking-wide text-gray-200">
+              {title}
+            </h3>
+          )}
+          {actions && (
+            <div className="ml-auto flex items-center gap-2">{actions}</div>
+          )}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+
+  const InfoRow = ({
+    label,
+    value,
+  }: {
+    label: string;
+    value: React.ReactNode;
+  }) => (
+    <div className="flex justify-between text-xs text-gray-400">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-300 ml-4">{value}</span>
+    </div>
+  );
+
+  const OfferStatusBadge = ({ offer }: { offer: Offer }) => {
+    if (offer.accepted) return <Badge variant="success">Accepted</Badge>;
+    if (offer.cancelled) return <Badge variant="inactive">Cancelled</Badge>;
+    return <Badge variant="warning">Pending</Badge>;
+  };
+
   const handleBookService = async () => {
     if (!address || !state || submitting) return;
 
@@ -564,20 +658,18 @@ export default function GigDetailsPage({
 
   const renderPortfolio = () => {
     if (!state?.portfolio?.length) return null;
-
     return (
-      <div className="container-panel p-6">
-        <h3 className="font-medium mb-4">Portfolio</h3>
+      <SectionCard title="Portfolio" icon={<Package className="w-4 h-4" />}>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {state.portfolio.map((item: PortfolioItem, index: number) => (
-            <div key={index} className="space-y-2">
+            <div key={index} className="space-y-2 group">
               {item.image && (
                 <Image
                   src={toGatewayUrl(item.image) || item.image}
                   alt={item.title || `Portfolio item ${index + 1}`}
                   width={400}
                   height={200}
-                  className="w-full h-32 object-cover rounded border border-gray-800"
+                  className="w-full h-32 object-cover rounded border border-white/10 bg-gray-900 group-hover:opacity-90 transition"
                   unoptimized
                   onError={(e) => {
                     e.currentTarget.style.display = "none";
@@ -585,49 +677,70 @@ export default function GigDetailsPage({
                 />
               )}
               {item.title && (
-                <h4 className="text-sm font-medium">{item.title}</h4>
+                <h4 className="text-xs font-medium tracking-wide">
+                  {item.title}
+                </h4>
               )}
               {item.description && (
-                <p className="text-xs text-gray-400">
+                <p className="text-[11px] leading-relaxed text-gray-400">
                   {truncateText(item.description, 80)}
                 </p>
               )}
             </div>
           ))}
         </div>
-      </div>
+      </SectionCard>
     );
   };
 
   const renderPackages = () => {
     if (!state?.packages?.length) return null;
-
     return (
-      <div className="container-panel p-6">
-        <h3 className="font-medium mb-4">Service Packages</h3>
+      <SectionCard
+        title="Service Packages"
+        icon={<Package className="w-4 h-4" />}
+      >
         <div className="space-y-4">
           {state.packages.map((pkg: ServicePackage, index: number) => (
-            <div key={index} className="border border-gray-800 rounded p-4">
+            <div
+              key={index}
+              className="rounded-lg border border-white/10 p-4 bg-gray-900/40"
+            >
               <div className="flex justify-between items-start mb-2">
-                <h4 className="font-medium">
+                <h4 className="font-medium text-sm tracking-wide">
                   {pkg.name || `Package ${index + 1}`}
                 </h4>
-                <span className="text-lg font-semibold text-green-400">
+                <span className="text-base font-semibold text-green-400">
                   {pkg.price} {pkg.currency || state.tokenSymbol || "ETH"}
                 </span>
               </div>
               {pkg.description && (
-                <p className="text-sm text-gray-300 mb-3">{pkg.description}</p>
+                <p className="text-xs text-gray-300 mb-3 leading-relaxed">
+                  {pkg.description}
+                </p>
               )}
-              <div className="flex flex-wrap gap-4 text-xs text-gray-400">
-                {pkg.deliveryTime && <span>⏱️ {pkg.deliveryTime}</span>}
-                {pkg.revisions && <span>🔄 {pkg.revisions} revisions</span>}
+              <div className="flex flex-wrap gap-3 text-[11px] text-gray-400">
+                {pkg.deliveryTime && (
+                  <span className="inline-flex items-center gap-1">
+                    <Clock3 className="w-3 h-3" />
+                    {pkg.deliveryTime}
+                  </span>
+                )}
+                {pkg.revisions && (
+                  <span className="inline-flex items-center gap-1">
+                    🔄 {pkg.revisions} revisions
+                  </span>
+                )}
                 {pkg.includes && Array.isArray(pkg.includes) && (
-                  <div className="w-full mt-2">
-                    <strong>Includes:</strong>
-                    <ul className="list-disc list-inside mt-1 space-y-1">
+                  <div className="w-full mt-1 space-y-1">
+                    <strong className="text-[11px] text-gray-300 font-medium">
+                      Includes:
+                    </strong>
+                    <ul className="list-disc list-inside space-y-0.5">
                       {pkg.includes.map((item: string, i: number) => (
-                        <li key={i}>{item}</li>
+                        <li key={i} className="text-gray-400">
+                          {item}
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -636,7 +749,7 @@ export default function GigDetailsPage({
             </div>
           ))}
         </div>
-      </div>
+      </SectionCard>
     );
   };
 
@@ -751,75 +864,81 @@ export default function GigDetailsPage({
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
 
       <div className="flex items-center justify-between">
-        <Link href="/gigs" className="text-sm text-gray-400 hover:text-white">
-          ← Back to Gigs
+        <Link
+          href="/gigs"
+          className="text-xs text-gray-400 hover:text-gray-200 inline-flex items-center gap-1"
+        >
+          <ArrowLeft className="w-4 h-4" /> Back
         </Link>
       </div>
 
       {loading ? (
-        <div className="container-panel p-6 animate-pulse space-y-4">
-          <div className="h-8 w-1/2 bg-gray-900/60 rounded" />
-          <div className="h-48 w-full bg-gray-900/60 rounded" />
-          <div className="h-4 w-full bg-gray-900/60 rounded" />
-          <div className="h-4 w-5/6 bg-gray-900/60 rounded" />
-        </div>
+        <SectionCard>
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading gig...
+          </div>
+          <div className="h-48 w-full bg-gray-900/60 rounded animate-pulse" />
+        </SectionCard>
       ) : error ? (
-        <div className="container-panel p-6 text-sm text-red-400">{error}</div>
+        <SectionCard className="text-sm text-red-400">{error}</SectionCard>
       ) : state ? (
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             {/* Main Content */}
-            <div className="container-panel p-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[11px] rounded-full border border-gray-800 px-2 py-0.5 text-gray-300">
-                  Gig
-                </span>
-                <span className="text-[11px] rounded-full border border-gray-800 px-2 py-0.5 text-gray-300">
+            <SectionCard>
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <Badge variant="outline">Gig</Badge>
+                <Badge variant="outline">
+                  <TagIcon className="w-3.5 h-3.5" />
                   {state.categoryLabel}
-                </span>
+                </Badge>
                 {state.isBoosted && (
-                  <span className="text-[11px] rounded-full border border-amber-500/30 bg-amber-400/20 px-2 py-0.5 text-amber-300">
+                  <Badge variant="boosted">
+                    <Sparkles className="w-3.5 h-3.5" />
                     Boosted
-                  </span>
+                  </Badge>
                 )}
-                <span className="ml-auto text-xs text-gray-400">
+                <span className="ml-auto text-[11px] text-gray-400 flex items-center gap-1">
+                  <Clock3 className="w-3.5 h-3.5" />
                   {state.createdAgo}
                 </span>
               </div>
-
-              <h1 className="text-2xl font-semibold mb-4">{state.title}</h1>
-
-              {state.cover ? (
-                <Image
-                  src={state.cover}
-                  alt={state.title || "cover"}
-                  width={1200}
-                  height={480}
-                  className="w-full rounded border border-gray-800 object-cover max-h-96 mb-4"
-                  unoptimized
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-              ) : null}
-
-              <p className="text-gray-300 whitespace-pre-wrap mb-4">
+              <h1 className="text-2xl font-semibold tracking-tight mb-4 leading-snug">
+                {state.title}
+              </h1>
+              {state.cover && (
+                <div className="relative mb-5 rounded-lg overflow-hidden border border-white/10 group">
+                  <Image
+                    src={state.cover}
+                    alt={state.title || "cover"}
+                    width={1200}
+                    height={480}
+                    className="w-full object-cover max-h-96 group-hover:opacity-95 transition"
+                    unoptimized
+                    onError={(e) => {
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                  <div className="absolute inset-0 ring-1 ring-white/10" />
+                </div>
+              )}
+              <p className="text-gray-300 text-sm leading-relaxed whitespace-pre-wrap mb-5">
                 {state.description}
               </p>
-
               {!!state.skills?.length && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {state.skills.map((s: string, i: number) => (
-                    <span
+                    <Badge
                       key={`sk-${i}`}
-                      className="text-[11px] rounded-full border border-gray-800 px-2 py-0.5 text-gray-400"
+                      variant="neutral"
+                      className="text-[10px] py-0.5 px-2"
                     >
                       {s}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               )}
-            </div>
+            </SectionCard>
 
             {/* Portfolio */}
             {renderPortfolio()}
@@ -831,9 +950,11 @@ export default function GigDetailsPage({
           <aside className="space-y-4">
             {/* Service Provider Info */}
             {profile && (
-              <div className="container-panel p-6 space-y-3">
-                <h3 className="font-medium">Service Provider</h3>
-                <div className="flex items-center gap-3">
+              <SectionCard
+                title="Service Provider"
+                icon={<User2 className="w-4 h-4" />}
+              >
+                <div className="flex items-center gap-3 mb-3">
                   {profileMetadata?.avatar && (
                     <Image
                       src={
@@ -843,18 +964,18 @@ export default function GigDetailsPage({
                       alt="Profile"
                       width={48}
                       height={48}
-                      className="w-12 h-12 rounded-full border border-gray-700"
+                      className="w-12 h-12 rounded-full border border-white/10 object-cover"
                       unoptimized
                       onError={(e) => {
                         e.currentTarget.style.display = "none";
                       }}
                     />
                   )}
-                  <div>
-                    <div className="font-medium">
+                  <div className="space-y-0.5">
+                    <div className="font-medium text-sm leading-tight">
                       {profileMetadata?.name || formatAddress(state.creator)}
                     </div>
-                    <div className="text-sm text-gray-400">
+                    <div className="text-[11px] text-gray-400">
                       {profile.userType === 1
                         ? "Developer"
                         : profile.userType === 2
@@ -863,68 +984,79 @@ export default function GigDetailsPage({
                         ? "KOL"
                         : "User"}
                     </div>
-                    {profile.isVerified && (
-                      <div className="text-xs text-green-400">✓ Verified</div>
-                    )}
-                    {avgRating !== null && (
-                      <div className="text-xs text-yellow-300 mt-1">
-                        ★ {avgRating.toFixed(2)} avg
-                      </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {profile.isVerified && (
+                        <Badge
+                          variant="success"
+                          className="text-[10px] px-2 py-0.5"
+                        >
+                          Verified
+                        </Badge>
+                      )}
+                      {avgRating !== null && (
+                        <Badge
+                          variant="warning"
+                          className="text-[10px] px-2 py-0.5 flex items-center gap-1"
+                        >
+                          <Star className="w-3 h-3" />
+                          {avgRating.toFixed(1)}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {profile.bio && (
-                  <p className="text-sm text-gray-300">{profile.bio}</p>
+                  <p className="text-xs text-gray-300 leading-relaxed mb-3">
+                    {profile.bio}
+                  </p>
                 )}
                 {profileSkills.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 mb-3">
                     {profileSkills.slice(0, 3).map((skill, index) => (
-                      <span
+                      <Badge
                         key={index}
-                        className="text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded"
+                        variant="neutral"
+                        className="text-[10px] px-2 py-0.5"
                       >
                         {skill}
-                      </span>
+                      </Badge>
                     ))}
                     {profileSkills.length > 3 && (
-                      <span className="text-xs text-gray-400">
+                      <span className="text-[11px] text-gray-500">
                         +{profileSkills.length - 3} more
                       </span>
                     )}
                   </div>
                 )}
                 {parsedReviews.length > 0 && (
-                  <div className="mt-2">
-                    <h4 className="text-sm font-medium mb-1">Recent Reviews</h4>
-                    <div className="space-y-2">
-                      {parsedReviews.map((r, idx) => (
-                        <div
-                          key={idx}
-                          className="text-xs border border-gray-800 rounded p-2"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-yellow-300">
-                              {"★".repeat(r.rating)}
-                            </span>
-                            <span className="text-gray-500">
-                              {r.timestamp
-                                ? timeAgo(Math.floor(r.timestamp))
-                                : ""}
-                            </span>
-                          </div>
-                          {r.text && (
-                            <p className="text-gray-300 mt-1">
-                              {truncateText(r.text, 120)}
-                            </p>
-                          )}
+                  <div className="space-y-2 mb-3">
+                    {parsedReviews.map((r, idx) => (
+                      <div
+                        key={idx}
+                        className="text-[11px] border border-white/10 rounded p-2 space-y-1 bg-gray-900/40"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-yellow-300 flex items-center gap-0.5">
+                            {"★".repeat(r.rating)}
+                          </span>
+                          <span className="text-gray-500">
+                            {r.timestamp
+                              ? timeAgo(Math.floor(r.timestamp))
+                              : ""}
+                          </span>
                         </div>
-                      ))}
-                    </div>
+                        {r.text && (
+                          <p className="text-gray-300 line-clamp-3">
+                            {truncateText(r.text, 120)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
                     {hasMoreReviews && (
                       <button
                         onClick={loadMoreReviews}
                         disabled={reviewsLoadingMore}
-                        className="mt-2 w-full text-xs border border-gray-800 rounded px-2 py-1 hover:bg-gray-800 disabled:opacity-50"
+                        className="w-full text-[11px] border border-white/10 rounded px-2 py-1 hover:bg-white/5 disabled:opacity-50"
                       >
                         {reviewsLoadingMore ? "Loading..." : "Load more"}
                       </button>
@@ -933,37 +1065,34 @@ export default function GigDetailsPage({
                 )}
                 <Link
                   href={`/profile/${state.creator}`}
-                  className="block w-full text-center px-4 py-2 border border-gray-700 rounded hover:bg-gray-800 transition-colors text-sm"
+                  className="block w-full text-center text-xs px-4 py-2 border border-white/10 rounded hover:bg-white/5 transition-colors"
                 >
                   View Full Profile
                 </Link>
-              </div>
+              </SectionCard>
             )}
 
             {/* Pricing */}
-            <div className="container-panel p-6 space-y-3">
-              <h3 className="font-medium">Pricing</h3>
+            <SectionCard title="Pricing" icon={<Star className="w-4 h-4" />}>
               {state.price ? (
-                <div className="space-y-2">
-                  <div className="text-2xl font-bold text-green-400">
+                <div className="space-y-3 mb-2">
+                  <div className="text-2xl font-semibold text-green-400 tracking-tight">
                     {state.price}
                     {state.tokenSymbol ? ` ${state.tokenSymbol}` : " ETH"}
                   </div>
-                  {state.rateUnit && (
-                    <div className="text-sm text-gray-400">
-                      per {state.rateUnit}
-                    </div>
-                  )}
-                  {state.deliveryTime && (
-                    <div className="text-sm text-gray-400">
-                      ⏱️ Delivery: {state.deliveryTime}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-3 text-xs text-gray-400">
+                    {state.rateUnit && <span>per {state.rateUnit}</span>}
+                    {state.deliveryTime && (
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 className="w-3.5 h-3.5" />
+                        {state.deliveryTime}
+                      </span>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="text-sm text-gray-400">Custom pricing</div>
+                <div className="text-xs text-gray-400 mb-2">Custom pricing</div>
               )}
-
               {!isOwner && address && state.active && (
                 <LoadingButton
                   onClick={() => setShowBookingForm(true)}
@@ -973,120 +1102,93 @@ export default function GigDetailsPage({
                   Book This Service
                 </LoadingButton>
               )}
-
               {!address && (
-                <div className="text-sm text-center text-gray-400 p-3 border border-gray-800 rounded">
+                <div className="text-xs text-center text-gray-400 p-3 border border-white/10 rounded">
                   Connect wallet to book this service
                 </div>
               )}
-
               {isOwner && (
-                <div className="text-sm text-center text-blue-400 p-3 border border-blue-800 rounded">
+                <div className="text-xs text-center text-blue-300 p-3 border border-blue-800/40 rounded">
                   This is your gig
                 </div>
               )}
-            </div>
+            </SectionCard>
 
             {/* Your Offer (for current wallet) */}
             {address && myOffer && (
-              <div className="container-panel p-6 space-y-3">
-                <h3 className="font-medium">Your Offer</h3>
-                <div className="text-sm text-gray-300">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs px-2 py-0.5 rounded border border-gray-800">
-                      #{String(myOffer.id)}
-                    </span>
-                    {myOffer.accepted ? (
-                      <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">
-                        Accepted
-                      </span>
-                    ) : myOffer.cancelled ? (
-                      <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
-                        Cancelled
-                      </span>
-                    ) : (
-                      <span className="text-xs px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
-                        Pending
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Link
-                      href={`/offers/${String(myOffer.id)}`}
-                      className="text-blue-400 hover:underline"
-                    >
-                      View details
-                    </Link>
-                  </div>
+              <SectionCard
+                title="Your Offer"
+                icon={<FileText className="w-4 h-4" />}
+              >
+                <div className="flex items-center gap-2 mb-3 text-xs">
+                  <Badge variant="outline">#{String(myOffer.id)}</Badge>
+                  <OfferStatusBadge offer={myOffer} />
+                  <Link
+                    href={`/offers/${String(myOffer.id)}`}
+                    className="ml-auto text-blue-400 hover:underline"
+                  >
+                    View
+                  </Link>
                 </div>
-
                 {!myOffer.accepted && !myOffer.cancelled && (
                   <button
                     onClick={handleCancelMyOffer}
                     disabled={offerActionLoading === "cancel"}
-                    className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                    className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm"
                   >
                     {offerActionLoading === "cancel"
                       ? "Cancelling..."
                       : "Cancel Offer"}
                   </button>
                 )}
-
                 {myOffer.accepted &&
                   myEscrow &&
                   myEscrow.status === EscrowStatus.IN_PROGRESS && (
                     <button
                       onClick={handleDisputeMyOffer}
                       disabled={offerActionLoading === "dispute"}
-                      className="w-full px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                      className="w-full mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 text-sm"
                     >
                       {offerActionLoading === "dispute"
                         ? "Submitting..."
                         : "Request Refund"}
                     </button>
                   )}
-              </div>
+              </SectionCard>
             )}
 
             {/* On-chain Info */}
-            <div className="container-panel p-6 space-y-3">
-              <h3 className="font-medium">On-chain Details</h3>
-              <div className="text-sm text-gray-400 space-y-2">
-                <div>
-                  <span className="text-gray-500">Listing ID:</span>{" "}
-                  {String(state.id)}
-                </div>
-                <div>
-                  <span className="text-gray-500">Creator:</span>{" "}
-                  {formatAddress(state.creator)}
-                </div>
-                <div>
-                  <span className="text-gray-500">Active:</span>{" "}
-                  {state.active ? "✅ Yes" : "❌ No"}
-                </div>
-                <div>
-                  <span className="text-gray-500">Created:</span>{" "}
-                  {state.createdAgo}
-                </div>
+            <SectionCard
+              title="On-chain Details"
+              icon={<FileText className="w-4 h-4" />}
+            >
+              <div className="space-y-2">
+                <InfoRow label="Listing ID" value={String(state.id)} />
+                <InfoRow label="Creator" value={formatAddress(state.creator)} />
+                <InfoRow label="Active" value={state.active ? "Yes" : "No"} />
+                <InfoRow label="Created" value={state.createdAgo} />
               </div>
-            </div>
+            </SectionCard>
 
             {/* Attachments */}
-            <div className="container-panel p-6 space-y-3">
-              <h3 className="font-medium">Attachments</h3>
+            <SectionCard
+              title="Attachments"
+              icon={<FileText className="w-4 h-4" />}
+            >
               {state.primaryLink ? (
                 <a
                   href={state.primaryLink}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-sm text-cyan-300 hover:underline break-all block"
+                  className="text-xs text-cyan-300 hover:underline break-all inline-flex items-center gap-1"
                 >
-                  📎 View Attachment
+                  <FileText className="w-3.5 h-3.5" />
+                  View Attachment
                 </a>
               ) : (
-                <div className="text-sm text-gray-400">No attachments</div>
+                <div className="text-xs text-gray-400">No attachments</div>
               )}
-            </div>
+            </SectionCard>
           </aside>
         </div>
       ) : null}

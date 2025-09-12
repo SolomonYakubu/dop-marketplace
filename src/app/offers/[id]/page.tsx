@@ -1726,9 +1726,6 @@ export default function OfferDetailsPage({
 
             {/* Dispute Section */}
             {renderDisputeSection()}
-
-            {/* Reviews */}
-            {renderReviews()}
           </div>
 
           <aside className="space-y-4 lg:sticky top-4 h-fit">
@@ -1736,6 +1733,8 @@ export default function OfferDetailsPage({
               <h3 className="font-medium text-sm">Actions</h3>
               {renderOfferActions()}
             </div>
+            {/* Reviews */}
+            {renderReviews()}
 
             {/* Escrow Details */}
             {escrow && (

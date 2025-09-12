@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAccount } from "wagmi";
 import {
   formatAddress,
@@ -17,6 +17,15 @@ import {
   OnchainUserProfile,
 } from "@/types/marketplace";
 import { useToastContext } from "@/components/providers";
+import {
+  UserCircle2,
+  BadgeCheck,
+  Loader2,
+  Award,
+  Target,
+  History,
+  Link as LinkIcon,
+} from "lucide-react";
 
 export default function ComprehensiveProfilePage() {
   const { address, chain } = useAccount();
@@ -112,45 +121,71 @@ export default function ComprehensiveProfilePage() {
     loadProfileData();
   }, [loadProfileData]);
 
+  const skillCount = useMemo(
+    () => skills.split(",").filter((s) => s.trim()).length,
+    [skills]
+  );
+  const bioRemaining = 600 - bio.length;
+  const disputes = useMemo(
+    () => missions.filter((m) => m.wasDisputed).length,
+    [missions]
+  );
+  const successRate = useMemo(
+    () =>
+      missions.length
+        ? Math.round(((missions.length - disputes) / missions.length) * 100)
+        : 0,
+    [missions, disputes]
+  );
+
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-800 rounded mb-6"></div>
-          <div className="h-64 bg-gray-800 rounded"></div>
+      <div className="max-w-5xl mx-auto p-8">
+        <div className="space-y-6 animate-pulse">
+          <div className="h-8 bg-gray-800/60 rounded w-1/3" />
+          <div className="h-72 bg-gray-800/40 rounded" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Profile</h1>
-          <p className="text-gray-400">
-            {address && formatAddress(address)}
-            {profile?.isVerified && (
-              <span className="ml-2 text-green-400">✓ Verified</span>
-            )}
-          </p>
+    <div className="max-w-5xl mx-auto space-y-10">
+      {/* Header */}
+      <header className="flex flex-col gap-3">
+        <h1 className="text-3xl font-semibold tracking-tight flex items-center gap-3">
+          <UserCircle2 className="w-9 h-9 text-gray-400" />
+          <span>Comprehensive Profile</span>
+        </h1>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          {address && (
+            <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-gray-300">
+              {formatAddress(address)}
+            </span>
+          )}
+          {profile?.isVerified && (
+            <span className="px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 flex items-center gap-1">
+              <BadgeCheck className="w-3.5 h-3.5" /> Verified
+            </span>
+          )}
+          <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-gray-300">
+            {skillCount} skills
+          </span>
+          {profile?.joinedAt && profile.joinedAt !== BigInt(0) && (
+            <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-gray-300">
+              Joined{" "}
+              {new Date(Number(profile.joinedAt) * 1000).toLocaleDateString()}
+            </span>
+          )}
         </div>
-        {profile?.joinedAt && profile.joinedAt !== BigInt(0) && (
-          <div className="text-sm text-gray-400">
-            Joined:{" "}
-            {new Date(Number(profile.joinedAt) * 1000).toLocaleDateString()}
-          </div>
-        )}
-      </div>
+      </header>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Main Profile Form */}
-        <div className="lg:col-span-2">
-          <div className="container-panel p-6 space-y-6">
-            <h2 className="text-xl font-semibold mb-4">Profile Information</h2>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+      <div className="grid lg:grid-cols-3 gap-8 items-start">
+        {/* Left: Form */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-6">
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-gray-400">
                 User Type
               </label>
               <select
@@ -162,7 +197,7 @@ export default function ComprehensiveProfilePage() {
                   profile?.joinedAt !== undefined &&
                   profile.joinedAt !== BigInt(0)
                 }
-                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 outline-none focus:border-gray-600 disabled:opacity-50"
+                className="w-full rounded-lg border border-white/10 bg-gray-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/15 disabled:opacity-50"
               >
                 <option value={UserType.PROJECT_OWNER}>Project Owner</option>
                 <option value={UserType.DEVELOPER}>Developer</option>
@@ -171,167 +206,257 @@ export default function ComprehensiveProfilePage() {
               </select>
               {profile?.joinedAt !== undefined &&
                 profile.joinedAt !== BigInt(0) && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    User type cannot be changed after profile creation
+                  <p className="text-[11px] text-gray-500">
+                    User type is permanent after creation.
                   </p>
                 )}
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Bio
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-gray-400 flex items-center justify-between">
+                Bio{" "}
+                <span className="text-[10px] text-gray-500">
+                  {bioRemaining}
+                </span>
               </label>
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                rows={4}
-                placeholder="Tell us about yourself..."
-                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 outline-none focus:border-gray-600"
+                maxLength={600}
+                rows={5}
+                placeholder="Tell people what you do, experience, interests…"
+                className="w-full rounded-lg border border-white/10 bg-gray-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/15 resize-none"
               />
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Skills (comma-separated)
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                Skills (comma separated)
               </label>
               <input
                 value={skills}
                 onChange={(e) => setSkills(e.target.value)}
-                placeholder="React, TypeScript, Solidity, Web3..."
-                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 outline-none focus:border-gray-600"
+                placeholder="React, TypeScript, Solidity, Web3…"
+                className="w-full rounded-lg border border-white/10 bg-gray-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/15"
               />
+              {skillCount > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {skills
+                    .split(",")
+                    .filter((s) => s.trim())
+                    .slice(0, 8)
+                    .map((s, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-full bg-gray-800/60 text-[10px] text-gray-300"
+                      >
+                        {s.trim()}
+                      </span>
+                    ))}
+                  {skillCount > 8 && (
+                    <span className="text-[10px] text-gray-400">
+                      +{skillCount - 8}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Portfolio URI
+            <div className="space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                Portfolio (URL / IPFS)
               </label>
               <input
                 value={portfolioUri}
                 onChange={(e) => setPortfolioUri(e.target.value)}
-                placeholder="https://..."
-                className="w-full rounded-lg border border-gray-800 bg-black px-3 py-2 outline-none focus:border-gray-600"
+                placeholder="https:// or ipfs://"
+                className="w-full rounded-lg border border-white/10 bg-gray-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/15"
               />
+              {portfolioUri && (
+                <p className="text-[11px] text-gray-500 break-all flex items-center gap-1">
+                  <LinkIcon className="w-3 h-3" />
+                  {portfolioUri}
+                </p>
+              )}
             </div>
-
-            <button
-              onClick={saveProfile}
-              disabled={saving || !bio.trim()}
-              className="w-full rounded-lg bg-white text-black px-4 py-2 font-medium hover:opacity-90 disabled:opacity-50"
-            >
-              {saving
-                ? "Saving..."
-                : profile?.joinedAt !== undefined &&
-                  profile.joinedAt !== BigInt(0)
-                ? "Update Profile"
-                : "Create Profile"}
-            </button>
+            <div>
+              <button
+                onClick={saveProfile}
+                disabled={saving || !bio.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-white text-black px-5 py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-40"
+              >
+                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {saving
+                  ? "Saving…"
+                  : profile?.joinedAt && profile.joinedAt !== BigInt(0)
+                  ? "Update Profile"
+                  : "Create Profile"}
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Badges */}
-          <div className="container-panel p-6">
-            <h3 className="text-lg font-semibold mb-4">Badges</h3>
-            {badges.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {badges.map((badge, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-gradient-to-r from-yellow-600 to-orange-600 text-white text-xs rounded-full"
+          {/* Mission History (condensed) */}
+          {missions.length > 0 && (
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <History className="w-4 h-4" /> Recent Missions
+              </div>
+              <div className="space-y-3">
+                {missions.slice(0, 5).map((mission, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-white/10 bg-gray-950/50 p-4 text-xs flex items-start justify-between gap-4"
                   >
-                    {Badge[badge] || "NONE"}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-400 text-sm">No badges earned yet</p>
-            )}
-          </div>
-
-          {/* Mission Stats */}
-          <div className="container-panel p-6">
-            <h3 className="text-lg font-semibold mb-4">Mission Stats</h3>
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total Missions:</span>
-                <span className="font-semibold">{missions.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Disputed:</span>
-                <span className="font-semibold text-red-400">
-                  {missions.filter((m) => m.wasDisputed).length}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Success Rate:</span>
-                <span className="font-semibold text-green-400">
-                  {missions.length > 0
-                    ? Math.round(
-                        ((missions.length -
-                          missions.filter((m) => m.wasDisputed).length) /
-                          missions.length) *
-                          100
-                      )
-                    : 0}
-                  %
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Mission History */}
-      {missions.length > 0 && (
-        <div className="mt-6">
-          <div className="container-panel p-6">
-            <h3 className="text-lg font-semibold mb-4">Mission History</h3>
-            <div className="space-y-4">
-              {missions.slice(0, 10).map((mission, index) => (
-                <div
-                  key={index}
-                  className="border border-gray-800 rounded-lg p-4 hover:border-gray-700"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">
+                    <div className="space-y-1 min-w-0">
+                      <p className="font-medium text-gray-200">
                         Escrow #{mission.escrowId.toString()}
                       </p>
-                      <p className="text-sm text-gray-400">
-                        Client: {formatAddress(mission.client)}
+                      <p className="text-gray-500">
+                        Client {formatAddress(mission.client)}
                       </p>
-                      <p className="text-sm text-gray-400">
-                        Provider: {formatAddress(mission.provider)}
+                      <p className="text-gray-500">
+                        Provider {formatAddress(mission.provider)}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold">
+                    <div className="text-right space-y-1">
+                      <p className="font-semibold text-gray-100">
                         {formatTokenAmountWithSymbol(
                           mission.amount,
                           mission.token,
                           { tokens }
                         )}
                       </p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-[10px] text-gray-500">
                         {new Date(
                           Number(mission.completedAt) * 1000
                         ).toLocaleDateString()}
                       </p>
                       {mission.wasDisputed && (
-                        <span className="inline-block px-2 py-1 bg-red-900 text-red-200 text-xs rounded mt-1">
+                        <span className="inline-block px-2 py-0.5 rounded bg-red-900/70 text-red-300 text-[10px]">
                           Disputed
                         </span>
                       )}
                     </div>
                   </div>
+                ))}
+              </div>
+              {missions.length > 5 && (
+                <p className="text-[11px] text-gray-500">
+                  Showing 5 of {missions.length} missions.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right Sidebar */}
+        <aside className="space-y-6">
+          {/* Preview */}
+          <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Profile Preview
+            </h3>
+            <div className="rounded-lg border border-white/10 bg-gray-950/60 p-4 space-y-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-[11px] text-gray-300 flex items-center gap-1">
+                  <UserCircle2 className="w-3.5 h-3.5" />
+                  Profile
+                </span>
+                {userType === UserType.DEVELOPER && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-[11px] text-indigo-300">
+                    Dev
+                  </span>
+                )}
+                {userType === UserType.PROJECT_OWNER && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-[11px] text-rose-300">
+                    Owner
+                  </span>
+                )}
+                {userType === UserType.ARTIST && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-[11px] text-pink-300">
+                    Artist
+                  </span>
+                )}
+                {userType === UserType.KOL && (
+                  <span className="px-2 py-0.5 rounded-full bg-gray-800/70 text-[11px] text-emerald-300">
+                    KOL
+                  </span>
+                )}
+              </div>
+              <p className="text-gray-300 line-clamp-5 min-h-[80px] text-xs whitespace-pre-wrap">
+                {bio || "Your bio preview will appear here."}
+              </p>
+              {skillCount > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {skills
+                    .split(",")
+                    .filter((s) => s.trim())
+                    .slice(0, 6)
+                    .map((s, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-full bg-gray-800/60 text-[10px] text-gray-300"
+                      >
+                        {s.trim()}
+                      </span>
+                    ))}
+                  {skillCount > 6 && (
+                    <span className="text-[10px] text-gray-400">
+                      +{skillCount - 6}
+                    </span>
+                  )}
                 </div>
-              ))}
+              )}
+              {portfolioUri && (
+                <div className="text-[10px] text-gray-500 truncate flex items-center gap-1">
+                  <LinkIcon className="w-3 h-3" /> {portfolioUri}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+          {/* Badges */}
+          <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <Award className="w-4 h-4" /> Badges
+            </div>
+            {badges.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {badges.map((badge, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 rounded-full bg-yellow-600/30 text-yellow-200 text-[10px] tracking-wide"
+                  >
+                    {Badge[badge] || "NONE"}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-500">No badges yet.</p>
+            )}
+          </div>
+          {/* Mission Stats */}
+          <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <Target className="w-4 h-4" /> Mission Stats
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Total Missions</span>
+                <span className="font-medium text-gray-200">
+                  {missions.length}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Disputed</span>
+                <span className="font-medium text-red-300">{disputes}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Success Rate</span>
+                <span className="font-medium text-emerald-300">
+                  {successRate}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
