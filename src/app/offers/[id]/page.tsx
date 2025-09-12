@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState, use } from "react";
+import { useEffect, useMemo, useState, useRef, use } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { getTokenAddresses } from "@/lib/contract";
@@ -28,6 +28,11 @@ import {
 } from "@/lib/utils";
 import { useToastContext } from "@/components/providers";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import {
+  supabase,
+  type OfferChatMessage,
+  type OfferChatDocument,
+} from "@/lib/supabaseClient";
 
 // Helpers for escrow labels (kept local; not in shared utils yet)
 function getEscrowStatusLabel(status: EscrowStatus) {
@@ -141,6 +146,16 @@ export default function OfferDetailsPage({
   const [appealReason, setAppealReason] = useState("");
   const [appealFiles, setAppealFiles] = useState<File[]>([]);
   const [appealing, setAppealing] = useState(false);
+
+  // Chat state (single document model)
+  const [chatMessages, setChatMessages] = useState<OfferChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatFiles, setChatFiles] = useState<File[]>([]);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const chainId = chain?.id ?? 11124;
   const provider = useMemo(
@@ -330,6 +345,159 @@ export default function OfferDetailsPage({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chainId, provider, resolvedParams.id, address]);
+
+  // Chat: load + realtime subscription (document model - listen for UPDATE)
+  useEffect(() => {
+    if (!resolvedParams?.id) return;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    const offerIdStr = resolvedParams.id;
+    let mounted = true;
+    // helper fetch
+    const fetchDoc = async () => {
+      try {
+        const { data } = await supabase
+          .from("offer_chats")
+          .select("offer_id,messages,updated_at")
+          .eq("offer_id", offerIdStr)
+          .maybeSingle();
+        if (!mounted) return;
+        if (data) {
+          const doc = data as OfferChatDocument;
+          setChatMessages(Array.isArray(doc.messages) ? doc.messages : []);
+        }
+      } catch {}
+    };
+    async function loadDoc() {
+      setChatLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from("offer_chats")
+          .select("offer_id,messages,updated_at")
+          .eq("offer_id", offerIdStr)
+          .maybeSingle();
+        if (!mounted) return;
+        if (!error && data) {
+          const doc = data as OfferChatDocument;
+          setChatMessages(Array.isArray(doc.messages) ? doc.messages : []);
+        } else {
+          setChatMessages([]);
+        }
+      } catch (e) {
+        if (mounted) console.warn("Chat load failed", e);
+      } finally {
+        if (mounted) setChatLoading(false);
+      }
+    }
+    loadDoc();
+
+    channel = supabase
+      .channel(`offer_chat_doc_${offerIdStr}`)
+      .on(
+        "postgres_changes",
+        {
+          schema: "public",
+          table: "offer_chats",
+          event: "*",
+          filter: `offer_id=eq.${offerIdStr}`,
+        },
+        (payload) => {
+          const newDoc = payload.new as OfferChatDocument;
+          setChatMessages(
+            Array.isArray(newDoc.messages) ? newDoc.messages : []
+          );
+        }
+      )
+      .subscribe();
+
+    // Fallback polling every 6s in case realtime missed (network blocks, etc.)
+    pollRef.current = setInterval(fetchDoc, 6000);
+    return () => {
+      mounted = false;
+      if (channel) supabase.removeChannel(channel);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [resolvedParams.id]);
+
+  // Auto scroll to bottom on new message
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages.length]);
+
+  const canUseChat = !!address && (isListingCreator || isProposer);
+
+  async function handleSendChat() {
+    if (!canUseChat) return;
+    const text = chatInput.trim();
+    if (!text && chatFiles.length === 0) return;
+    if (chatSending) return;
+    setChatSending(true);
+    try {
+      // Upload attachments first (if any)
+      const attachmentUris: string[] = [];
+      for (const file of chatFiles) {
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const res = await fetch("/api/ipfs", { method: "POST", body: form });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || "Upload failed");
+          attachmentUris.push(`ipfs://${data.cid}`);
+        } catch (err) {
+          console.warn("Attachment upload failed", err);
+        }
+      }
+      const message: OfferChatMessage = {
+        id: crypto.randomUUID(),
+        sender: address!.toLowerCase(),
+        content: text || undefined,
+        attachments: attachmentUris.length ? attachmentUris : undefined,
+        created_at: new Date().toISOString(),
+        message_type:
+          attachmentUris.length && text
+            ? "mixed"
+            : attachmentUris.length
+            ? "image"
+            : "text",
+      };
+
+      // Optimistic update
+      setChatMessages((cur) => [...cur, message]);
+
+      // Prefer RPC append to avoid race conditions
+      const { error: rpcError } = await supabase.rpc(
+        "append_offer_chat_message",
+        {
+          p_offer_id: resolvedParams.id,
+          // Supabase JS expects raw json serializable; cast via unknown to bypass any rule.
+          p_message: message as unknown as Record<string, unknown>,
+        }
+      );
+      if (rpcError) {
+        // Fallback: manual upsert (read-modify-write). Last-write-wins.
+        console.warn("RPC append failed, falling back", rpcError);
+        const { data } = await supabase
+          .from("offer_chats")
+          .select("messages")
+          .eq("offer_id", resolvedParams.id)
+          .maybeSingle();
+        let msgs: OfferChatMessage[] = [];
+        if (data && Array.isArray(data.messages))
+          msgs = data.messages as OfferChatMessage[];
+        msgs = [...msgs, message];
+        const { error: upError } = await supabase
+          .from("offer_chats")
+          .upsert({ offer_id: resolvedParams.id, messages: msgs });
+        if (upError) throw upError;
+      }
+      setChatInput("");
+      setChatFiles([]);
+    } catch (e) {
+      console.error("Send chat failed", e);
+      toast.showError("Chat", "Failed to send message");
+    } finally {
+      setChatSending(false);
+    }
+  }
 
   function isEscrowFinished(e: Escrow) {
     // Finished if both validated or if status is COMPLETED
@@ -1446,6 +1614,167 @@ export default function OfferDetailsPage({
               </div>
             </div>
 
+            {/* Chat (participants only) - JSON document model */}
+            <div className="container-panel p-6">
+              <h3 className="font-medium mb-4">Chat</h3>
+              {!canUseChat && (
+                <div className="text-sm text-gray-400 mb-2">
+                  Only offer participants may chat.
+                </div>
+              )}
+              <div className="h-64 overflow-y-auto border border-gray-800 rounded p-3 space-y-2 text-sm bg-black/20">
+                {chatLoading && (
+                  <div className="text-gray-500 text-center mt-4 text-xs">
+                    Loading…
+                  </div>
+                )}
+                {!chatLoading && chatMessages.length === 0 && (
+                  <div className="text-gray-500 text-center mt-8">
+                    No messages yet.
+                  </div>
+                )}
+                {chatMessages.map((m) => {
+                  const mine = address && m.sender === address.toLowerCase();
+                  const hasAttachments =
+                    m.attachments && m.attachments.length > 0;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`flex ${
+                        mine ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      <div
+                        className={`max-w-[70%] rounded px-3 py-2 whitespace-pre-wrap break-words text-xs sm:text-sm ${
+                          mine
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-800 text-gray-100"
+                        }`}
+                      >
+                        {!mine && (
+                          <div className="text-[10px] uppercase tracking-wide opacity-60 mb-0.5">
+                            {m.sender.slice(0, 6)}…{m.sender.slice(-4)}
+                          </div>
+                        )}
+                        {m.content && <div>{m.content}</div>}
+                        {hasAttachments && (
+                          <div className="mt-2 space-y-2">
+                            {m.attachments!.map((uri, idx) => {
+                              const gateway = uri.startsWith("ipfs://")
+                                ? `https://ipfs.io/ipfs/${uri.replace(
+                                    "ipfs://",
+                                    ""
+                                  )}`
+                                : uri;
+                              const linkId = `${m.id}-att-${idx}`;
+                              return (
+                                <div key={uri} className="group relative">
+                                  {/* Try image first; fallback to link */}
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={gateway}
+                                    alt="attachment"
+                                    className="max-h-40 rounded border border-white/10 object-contain cursor-pointer transition-transform hover:scale-[1.02]"
+                                    onClick={() => setPreviewImage(gateway)}
+                                    onError={(e) => {
+                                      const img =
+                                        e.currentTarget as HTMLImageElement;
+                                      img.style.display = "none";
+                                      const a = document.getElementById(linkId);
+                                      if (a) a.classList.remove("hidden");
+                                    }}
+                                  />
+                                  <a
+                                    id={linkId}
+                                    href={gateway}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="underline break-all hidden text-[10px]"
+                                  >
+                                    {uri}
+                                  </a>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        <div className="mt-1 text-[10px] opacity-50 text-right">
+                          {new Date(m.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={chatBottomRef} />
+              </div>
+              {canUseChat && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSendChat();
+                  }}
+                  className="mt-3 space-y-2"
+                >
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      placeholder="Type a message..."
+                      className="flex-1 px-3 py-2 bg-gray-900 border border-gray-800 rounded text-sm"
+                      maxLength={4000}
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        chatSending ||
+                        (!chatInput.trim() && chatFiles.length === 0)
+                      }
+                      className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+                    >
+                      {chatSending ? "Sending…" : "Send"}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <input
+                      id="chat-file-input"
+                      type="file"
+                      multiple
+                      onChange={(e) =>
+                        setChatFiles(Array.from(e.target.files || []))
+                      }
+                      className="hidden"
+                      accept="image/*"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        document.getElementById("chat-file-input")?.click()
+                      }
+                      className="px-2 py-1 border border-gray-700 rounded hover:bg-gray-800"
+                    >
+                      Attach
+                    </button>
+                    {chatFiles.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span>{chatFiles.length} file(s)</span>
+                        <button
+                          type="button"
+                          onClick={() => setChatFiles([])}
+                          className="px-2 py-1 border border-gray-700 rounded hover:bg-gray-800"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </form>
+              )}
+            </div>
+
             {/* Escrow Progress */}
             {renderEscrowProgress()}
 
@@ -1561,6 +1890,33 @@ export default function OfferDetailsPage({
         confirmText="Proceed"
         danger={true}
       />
+
+      {/* Image Preview Lightbox */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-full rounded border border-white/10 bg-black/40 backdrop-blur-sm p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewImage}
+              alt="preview"
+              className="max-h-[75vh] max-w-full object-contain"
+            />
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute -top-3 -right-3 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow hover:scale-105 transition"
+              aria-label="Close preview"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

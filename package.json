@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "@abstract-foundation/agw-client": "^1.9.1",
     "@abstract-foundation/agw-react": "^1.9.1",
     "@privy-io/cross-app-connect": "^0.2.3",
