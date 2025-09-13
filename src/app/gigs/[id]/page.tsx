@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, use } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
@@ -85,6 +86,7 @@ export default function GigDetailsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const { contract } = useMarketplaceContract();
   const { address, chain } = useAccount();
@@ -950,7 +952,18 @@ export default function GigDetailsPage({
             >
               {profile ? (
                 <>
-                  <div className="flex items-center gap-3 mb-3">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/profile/${state.creator}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/profile/${state.creator}`);
+                      }
+                    }}
+                    className="flex items-center gap-3 mb-3 hover:text-gray-300 transition-colors cursor-pointer"
+                  >
                     {profile.profilePicCID ? (
                       <Image
                         src={
@@ -1024,7 +1037,7 @@ export default function GigDetailsPage({
                         )}
                       </div>
                     </div>
-                  </div>
+                  </span>
                   {profile.bio && (
                     <p className="text-xs text-gray-300 leading-relaxed mb-3">
                       {profile.bio}

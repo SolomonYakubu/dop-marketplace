@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState, use, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Sparkles,
@@ -65,6 +66,7 @@ export default function BriefDetailsPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const { contract } = useMarketplaceContract();
   const { chain, address } = useAccount();
@@ -700,7 +702,18 @@ export default function BriefDetailsPage({
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">
                     Creator
                   </p>
-                  <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/profile/${state.creator}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/profile/${state.creator}`);
+                      }
+                    }}
+                    className="flex items-center gap-2 min-w-0 hover:text-gray-300 transition-colors cursor-pointer"
+                  >
                     {creatorProfile?.profilePicCID ? (
                       <div className="relative h-8 w-8 rounded-full overflow-hidden border border-white/10 shrink-0">
                         <Image
@@ -739,7 +752,7 @@ export default function BriefDetailsPage({
                         </span>
                       )}
                     </div>
-                  </div>
+                  </span>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">

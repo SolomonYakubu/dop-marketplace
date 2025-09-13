@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { CONTRACT_ADDRESSES } from "@/lib/contract";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
@@ -67,6 +68,7 @@ const btnBase =
   "inline-flex items-center justify-center gap-2 rounded-lg text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
 
 export default function GigsPage() {
+  const router = useRouter();
   const { contract } = useMarketplaceContract();
   const { chain } = useAccount();
   const { openChainModal } = useChainModal();
@@ -682,7 +684,22 @@ export default function GigsPage() {
                   </div>
                   <div className="mt-auto">
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/profile/${listing.creator}`);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            router.push(`/profile/${listing.creator}`);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 min-w-0 hover:text-gray-300 transition-colors"
+                      >
                         {(() => {
                           const key = listing.creator.toLowerCase();
                           const prof = creatorProfiles[key];
@@ -725,7 +742,7 @@ export default function GigsPage() {
                             return formatAddress(listing.creator);
                           })()}
                         </span>
-                      </div>
+                      </span>
                       <span>{timeAgo(Number(listing.createdAt))}</span>
                     </div>
                     <Link

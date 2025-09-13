@@ -181,7 +181,7 @@ export default function OfferDetailsPage({
     return (
       <Link
         href={`/profile/${addr}`}
-        className="inline-flex items-center gap-1.5 group/avatar max-w-[140px]"
+        className="inline-flex items-center gap-1.5 group/avatar max-w-[140px] hover:text-gray-300 transition-colors"
       >
         {avatarUrl ? (
           <span className="relative w-5 h-5 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">

@@ -14,6 +14,7 @@ import {
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { Listing, ListingType, EnrichedListing } from "@/types/marketplace";
@@ -27,6 +28,7 @@ import {
 import { useChainModal } from "@rainbow-me/rainbowkit";
 
 export default function BriefsPage() {
+  const router = useRouter();
   const { openChainModal } = useChainModal();
   const { contract } = useMarketplaceContract();
 
@@ -544,7 +546,22 @@ export default function BriefsPage() {
                   </div>
                 )}
                 <div className="mt-auto pt-2 flex items-center justify-between text-[11px] text-gray-500 mb-3">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/profile/${listing.creator}`);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        router.push(`/profile/${listing.creator}`);
+                      }
+                    }}
+                    className="flex items-center gap-2 min-w-0 hover:text-gray-300 transition-colors"
+                  >
                     {(() => {
                       const key = listing.creator.toLowerCase();
                       const prof = creatorProfiles[key];
@@ -585,7 +602,7 @@ export default function BriefsPage() {
                         return formatAddress(listing.creator);
                       })()}
                     </span>
-                  </div>
+                  </span>
                 </div>
                 <Link
                   href={`/briefs/${listing.id.toString()}`}

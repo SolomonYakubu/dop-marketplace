@@ -1,21 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { UserCircle2, ArrowLeft } from "lucide-react";
 import { Chat } from "@/components/chat/Chat";
 import { DirectChatProvider } from "@/components/chat";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
-import { toGatewayUrl } from "@/lib/utils";
 
 export default function DirectChatPage({
   params,
 }: {
-  params: { address: string };
+  params: Promise<{ address: string }>;
 }) {
-  const other = params.address;
+  const { address: other } = use(params);
   const { address } = useAccount();
   const { contract } = useMarketplaceContract();
   const [mounted, setMounted] = useState(false);
@@ -82,34 +78,7 @@ export default function DirectChatPage({
     };
   }, [address, other, contract, profiles]);
 
-  const Identity = ({ addr }: { addr: string }) => {
-    const lower = addr.toLowerCase();
-    const p = profiles[lower];
-    const avatarUrl = p?.profilePicCID ? toGatewayUrl(p.profilePicCID) : null;
-    const display = p?.username ? `@${p.username}` : "User";
-    return (
-      <div className="inline-flex items-center gap-2">
-        {avatarUrl ? (
-          <span className="relative w-8 h-8 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">
-            <Image
-              src={avatarUrl}
-              alt={display}
-              fill
-              sizes="32px"
-              className="object-cover"
-              unoptimized
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </span>
-        ) : (
-          <UserCircle2 className="w-8 h-8 text-gray-500" />
-        )}
-        <div className="text-sm text-gray-200">{display}</div>
-      </div>
-    );
-  };
+  // Identity component previously used in header; removed to avoid unused var warnings.
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">

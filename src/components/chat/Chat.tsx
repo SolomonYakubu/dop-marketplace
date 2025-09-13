@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Paperclip,
   RefreshCcw,
@@ -52,10 +53,7 @@ export function Identity({
   const avatarUrl = p?.profilePicCID ? toGatewayUrl(p.profilePicCID) : null;
   const display = p?.username ? `@${p.username}` : "User";
   return (
-    <Link
-      href={`/profile/${addr}`}
-      className="inline-flex items-center gap-1.5 group/avatar max-w-[140px]"
-    >
+    <span className="inline-flex items-center gap-1.5 group/avatar max-w-[140px]">
       {avatarUrl ? (
         <span className="relative w-5 h-5 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">
           <Image
@@ -82,7 +80,7 @@ export function Identity({
       >
         {display}
       </span>
-    </Link>
+    </span>
   );
 }
 
@@ -101,6 +99,7 @@ export function Chat({
   placeholder?: string;
   onMessages?: (messages: ChatMessage[]) => void;
 }) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -765,15 +764,61 @@ export function Chat({
           </button>
           {/* Peer identity if available */}
           <div className="min-w-0">
-            {/* We try to detect the peer (first sender not me) */}
+            {/* Header identity: only the name navigates to profile (avatar stays non-clickable) */}
             {(() => {
               const me = address?.toLowerCase();
               const other = messages.find((m) =>
                 me ? m.sender !== me : true
               )?.sender;
-              return other ? (
-                <Identity addr={other} resolve={resolveIdentity} />
-              ) : null;
+              if (!other) return null;
+              const lower = other.toLowerCase();
+              const p = resolveIdentity(lower);
+              const avatarUrl = p?.profilePicCID
+                ? toGatewayUrl(p.profilePicCID)
+                : null;
+              const hasUsername = !!p?.username;
+              const display = hasUsername ? `@${p?.username}` : "User";
+              return (
+                <span className="inline-flex items-center gap-1.5 group/avatar max-w-[200px]">
+                  {avatarUrl ? (
+                    <span className="relative w-5 h-5 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">
+                      <Image
+                        src={avatarUrl}
+                        alt={display}
+                        fill
+                        sizes="20px"
+                        className="object-cover"
+                        unoptimized
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display =
+                            "none";
+                        }}
+                      />
+                    </span>
+                  ) : (
+                    <UserCircle2 className="w-5 h-5 text-gray-500" />
+                  )}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/profile/${other}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/profile/${other}`);
+                      }
+                    }}
+                    className={
+                      hasUsername
+                        ? "text-gray-100 font-medium truncate hover:underline"
+                        : "text-gray-400 truncate"
+                    }
+                    title={display}
+                  >
+                    {display}
+                  </span>
+                </span>
+              );
             })()}
           </div>
         </div>
