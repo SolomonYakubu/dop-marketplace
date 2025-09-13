@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import {
-  ShieldCheck,
   LockKeyhole,
   Flame,
   Trophy,
@@ -10,499 +10,737 @@ import {
   RefreshCcw,
   Coins,
   Handshake,
-  Sparkles,
+  Wallet,
+  Search,
+  FileText,
+  ArrowRight,
+  Palette,
+  Shield,
+  Zap,
+  Code,
+  Briefcase,
 } from "lucide-react";
 
-// Feature & step configuration (could be extracted later if reused)
-const features = [
+// Core features - simplified and focused
+const coreFeatures = [
   {
-    title: "Dual Validation",
-    desc: "Payment only releases when both sides finalize—simple, fair, human readable.",
+    title: "Trustless Payments",
+    description:
+      "Funds locked in smart contracts until both parties confirm delivery",
+    icon: LockKeyhole,
+    color: "emerald",
+  },
+  {
+    title: "On-Chain Reputation",
+    description:
+      "Build verifiable history that travels with you across platforms",
+    icon: Trophy,
+    color: "purple",
+  },
+  {
+    title: "Deflationary Economics",
+    description:
+      "Every transaction burns tokens, creating sustainable value growth",
+    icon: Flame,
+    color: "orange",
+  },
+];
+
+// How it works - streamlined process
+const workflowSteps = [
+  {
+    step: "01",
+    title: "Connect Wallet",
+    description: "Link your Web3 wallet - no email required",
+    icon: Wallet,
+  },
+  {
+    step: "02",
+    title: "Create or Browse",
+    description: "Post work requests or offer your services",
+    icon: Search,
+  },
+  {
+    step: "03",
+    title: "Secure Funds",
+    description: "Lock payment in trustless smart contract",
     icon: LockKeyhole,
   },
   {
-    title: "Deflationary Engine",
-    desc: "DOP payments route part of fees to burn. Other tokens trigger a DOP buy & burn.",
-    icon: Flame,
+    step: "04",
+    title: "Collaborate",
+    description: "Work together with milestone tracking",
+    icon: Handshake,
   },
   {
-    title: "Reputation Layer",
-    desc: "Earn mission history, badges & trust signals that compound discovery.",
+    step: "05",
+    title: "Release & Build",
+    description: "Confirm completion and earn reputation",
     icon: Trophy,
-  },
-  {
-    title: "Boost Visibility",
-    desc: "Burn-backed boosts push listings & profiles for a timed window.",
-    icon: Sparkles,
-  },
-  {
-    title: "Portable Assets",
-    desc: "Profiles & portfolios reference decentralized storage (IPFS compatible).",
-    icon: Layers3,
-  },
-  {
-    title: "Dispute Path",
-    desc: "Built-in dispute & appeal flow—recover fairness when collaboration stalls.",
-    icon: RefreshCcw,
   },
 ];
 
-const steps = [
-  { n: 1, t: "Connect wallet", d: "No email, just your address & session." },
-  { n: 2, t: "Post or browse", d: "Briefs for hiring. Gigs for offering." },
-  { n: 3, t: "Lock escrow", d: "Funds held in smart contract vault." },
-  { n: 4, t: "Deliver & validate", d: "Both confirm → release or dispute." },
-  { n: 5, t: "Earn reputation", d: "Badges + immutable record on-chain." },
+// Use cases - clear value props
+const useCases = [
+  {
+    title: "For Businesses",
+    description:
+      "Hire top talent with guaranteed delivery and transparent pricing",
+    icon: Briefcase,
+    features: ["Escrow protection", "Quality assurance", "Global talent pool"],
+  },
+  {
+    title: "For Creators",
+    description:
+      "Showcase skills, build reputation, and get paid fairly for great work",
+    icon: Palette,
+    features: ["Portfolio building", "Instant payments", "Reputation system"],
+  },
+  {
+    title: "For Developers",
+    description:
+      "Find technical projects and build your on-chain professional identity",
+    icon: Code,
+    features: ["Tech-focused gigs", "Verifiable commits", "Skill validation"],
+  },
 ];
+
+// Security features
+const securityFeatures = [
+  {
+    title: "Multi-sig Escrow",
+    description: "Funds released only when both parties agree",
+    icon: Shield,
+  },
+  {
+    title: "Dispute Resolution",
+    description: "Built-in mediation for fair conflict resolution",
+    icon: RefreshCcw,
+  },
+  {
+    title: "Reentrancy Safe",
+    description: "Battle-tested smart contract security patterns",
+    icon: Zap,
+  },
+  {
+    title: "Upgradeable",
+    description: "Evolve safely without compromising user funds",
+    icon: Layers3,
+  },
+];
+
+// Tiny scroll-reveal wrapper for tasteful entrance animations
+function Reveal({
+  children,
+  delay = 0,
+  className = "",
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -10% 0px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`reveal ${visible ? "is-visible" : ""} ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function HomePage() {
   return (
     <main className="relative">
-      {/* Animated grid background */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-black">
-        {/* Base grid pattern */}
-        <div className="absolute inset-0 opacity-30">
-          <div
-            className="h-full w-full animate-pulse"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(75, 85, 99, 0.3) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(75, 85, 99, 0.3) 1px, transparent 1px)
-              `,
-              backgroundSize: "50px 50px",
-            }}
-          />
-        </div>
+      {/* Enhanced Aurora Background */}
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-black"></div>
+      </div>
 
-        {/* Moving grid overlay */}
-        <div className="absolute inset-0 opacity-10">
-          <div
-            className="h-full w-full grid-move"
-            style={{
-              backgroundImage: `
-                linear-gradient(rgba(156, 163, 175, 0.4) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(156, 163, 175, 0.4) 1px, transparent 1px)
-              `,
-              backgroundSize: "100px 100px",
-            }}
-          />
-        </div>
-
-        {/* Diagonal moving lines */}
-        <div className="absolute inset-0 opacity-5">
-          <div
-            className="h-full w-full diagonal-move"
-            style={{
-              backgroundImage: `
-                linear-gradient(45deg, rgba(107, 114, 128, 0.6) 1px, transparent 1px),
-                linear-gradient(-45deg, rgba(107, 114, 128, 0.6) 1px, transparent 1px)
-              `,
-              backgroundSize: "80px 80px",
-            }}
-          />
-        </div>
-      </div>{" "}
       {/* Hero Section */}
-      <section className="relative py-12">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid gap-12 lg:grid-cols-2 lg:items-center">
-            {/* Left column - Main content */}
-            <div className="space-y-8 text-center lg:text-left">
-              <div className="space-y-6">
-                <div className="inline-flex items-center gap-2 rounded-full border border-gray-800 bg-gray-900/50 px-4 py-1.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-purple-400"></span>
-                  </span>
-                  <span className="text-xs font-medium tracking-wide text-purple-200">
-                    Now in Beta
-                  </span>
-                </div>
+      <section className="relative px-6 pt-20 pb-16">
+        {/* Background kept pure black: removed floating orbs */}
 
-                <h1 className="text-balance text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight">
-                  <span className="block metallic-silver">
-                    The on‑chain creative marketplace
-                  </span>
-                  <span className="mt-1 block text-xl sm:text-2xl font-normal text-gray-400">
-                    for the modern web
-                  </span>
-                </h1>
-
-                <p className="mx-auto max-w-2xl text-lg leading-relaxed text-gray-300 lg:mx-0">
-                  Escrow-secured collaboration with deflationary token
-                  mechanics. Build reputation that compounds your opportunities.
-                  Discover, hire, deliver, verify—all trustlessly.
-                </p>
+        <div className="mx-auto max-w-6xl">
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/5 px-4 py-2 backdrop-blur-sm">
+              <div className="relative">
+                <div className="absolute h-2 w-2 animate-ping rounded-full bg-purple-400 opacity-75"></div>
+                <div className="h-2 w-2 rounded-full bg-purple-400"></div>
               </div>
+              <span className="text-sm font-medium text-purple-200">
+                Now in Beta
+              </span>
+            </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-4 lg:justify-start">
+            <Reveal>
+              <h1 className="mt-8 text-5xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl">
+                <span className="metallic-silver">The Future of</span>
+                <br />
+                <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
+                  Creative Work
+                </span>
+              </h1>
+            </Reveal>
+
+            <Reveal delay={80}>
+              <p className="mx-auto mt-6 max-w-3xl text-xl leading-relaxed text-gray-300">
+                A trustless marketplace where creativity meets blockchain
+                technology. Secure payments, verifiable reputation, and global
+                opportunities—all on-chain.
+              </p>
+            </Reveal>
+
+            <Reveal delay={140}>
+              <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
                 <Link
                   href="/browse"
-                  className="group relative inline-flex items-center gap-3 rounded-lg bg-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-purple-700 focus-visible:ring-2 focus-visible:ring-purple-500"
+                  aria-label="Start exploring gigs and listings"
+                  className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 text-lg font-semibold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25"
                 >
-                  <span>Explore Live Briefs</span>
-                  <span className="transition-transform group-hover:translate-x-1">
-                    →
-                  </span>
+                  <span>Start Exploring</span>
+                  <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
                 </Link>
 
                 <Link
                   href="/create"
-                  className="inline-flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 px-6 py-3 text-sm font-medium text-gray-200 transition-all hover:bg-gray-700/50 focus-visible:ring-2 focus-visible:ring-gray-500"
+                  aria-label="Create a new listing"
+                  className="group inline-flex items-center gap-2 rounded-xl border border-gray-600/50 bg-gray-900/50 px-8 py-4 text-lg font-medium text-white backdrop-blur-sm transition-all hover:border-gray-500 hover:bg-gray-800/50"
                 >
-                  Launch a Listing
+                  <FileText className="h-5 w-5" />
+                  <span>Create Listing</span>
                 </Link>
               </div>
+            </Reveal>
 
-              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 pt-4 text-sm text-gray-500 lg:justify-start">
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-400"></div>
-                  <span>Trustless escrow</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400"></div>
-                  <span>Deflationary mechanics</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-indigo-400"></div>
-                  <span>On-chain reputation</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right column - Interactive preview */}
-            <div className="relative">
-              <div className="mx-auto max-w-lg">
-                {/* Main panel */}
-                <div className="relative overflow-hidden rounded-xl border border-gray-800 bg-gray-900/50 p-6">
-                  <div className="space-y-6">
-                    <header className="flex items-center justify-between">
-                      <h3 className="text-xs font-semibold tracking-wider text-gray-400 uppercase">
-                        Collaboration Flow
-                      </h3>
-                      <span className="rounded border border-gray-700 bg-gray-800/50 px-2 py-1 text-xs text-gray-400">
-                        Immutable
-                      </span>
-                    </header>
-                    <div className="space-y-4">
-                      {steps.map((s, index) => (
-                        <div key={s.n} className="flex items-start gap-3">
-                          <div className="relative">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-600 text-xs font-bold text-white">
-                              {s.n}
-                            </div>
-                            {index < steps.length - 1 && (
-                              <div className="absolute left-1/2 top-7 h-4 w-px -translate-x-1/2 bg-gray-700" />
-                            )}
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <p className="font-medium text-gray-200 text-sm">
-                              {s.t}
-                            </p>
-                            <p className="text-xs leading-relaxed text-gray-400">
-                              {s.d}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="rounded-lg border border-purple-600/30 bg-purple-600/10 p-4">
-                      <p className="text-sm font-medium text-purple-200">
-                        Built for trust
-                      </p>
-                      <p className="mt-1 text-xs leading-relaxed text-purple-300/80">
-                        Every step is reversible until both parties confirm
-                        completion. No hidden fees, no platform lock-in.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <div className="scroll-indicator" />
           </div>
         </div>
       </section>
-      {/* Features Section */}
-      <section className="relative py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-white">
-              Why it works
-            </h2>
-            <p className="mt-4 text-lg leading-relaxed text-gray-400">
-              Simple primitives that compose into powerful collaboration tools
-            </p>
-          </div>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((f) => {
-              const Icon = f.icon;
+
+      {/* Core Features */}
+      <section className="relative px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <Reveal>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                Built Different
+              </h2>
+              <p className="mt-4 text-xl text-gray-400">
+                Three pillars that make creative work safer and more rewarding
+              </p>
+            </div>
+          </Reveal>
+
+          <div className="mt-16 grid gap-8 lg:grid-cols-3">
+            {coreFeatures.map((feature, index) => {
+              const Icon = feature.icon;
+              const colorClasses = {
+                emerald:
+                  "from-emerald-500/20 to-emerald-600/10 border-emerald-500/20 text-emerald-400",
+                purple:
+                  "from-purple-500/20 to-purple-600/10 border-purple-500/20 text-purple-400",
+                orange:
+                  "from-orange-500/20 to-orange-600/10 border-orange-500/20 text-orange-400",
+              };
+
               return (
-                <div
-                  key={f.title}
-                  className="container-panel p-6 transition-all hover:border-purple-600/40"
-                >
-                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-purple-600 text-white">
-                    <Icon className="h-5 w-5" />
+                <Reveal key={index} delay={index * 80}>
+                  <div className="group relative">
+                    <div
+                      className={`card-tilt rounded-2xl border bg-gradient-to-br p-8 backdrop-blur-sm hover:shadow-lg hover:shadow-black/10 ${
+                        colorClasses[feature.color as keyof typeof colorClasses]
+                      }`}
+                    >
+                      <div className="mb-6">
+                        <div
+                          className={`inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${
+                            feature.color === "emerald"
+                              ? "from-emerald-600 to-emerald-700"
+                              : feature.color === "purple"
+                              ? "from-purple-600 to-purple-700"
+                              : "from-orange-600 to-orange-700"
+                          }`}
+                        >
+                          <Icon className="icon-pop h-6 w-6 text-white" />
+                        </div>
+                      </div>
+                      <h3 className="mb-3 text-xl font-semibold text-white">
+                        {feature.title}
+                      </h3>
+                      <p className="text-gray-400">{feature.description}</p>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-semibold text-white">
-                    {f.title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-gray-400">
-                    {f.desc}
-                  </p>
-                </div>
+                </Reveal>
               );
             })}
           </div>
         </div>
       </section>
-      {/* Protocol Details Section */}
-      <section className="relative py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-white">
-              Designed for everyone
-            </h2>
-            <p className="mt-4 text-lg leading-relaxed text-gray-400">
-              Multi-token support, fair fees, and enterprise-grade security
-            </p>
-          </div>
 
-          <div className="mt-12 grid gap-8 lg:grid-cols-3">
-            {/* Multi-token payments */}
-            <div className="container-panel p-6">
-              <div className="flex items-center gap-3 text-lg font-semibold text-purple-200">
-                <Coins className="h-6 w-6" />
-                <span>Multi‑Token Payments</span>
-              </div>
-              <p className="mt-4 text-sm leading-relaxed text-gray-300">
-                Pay or get paid in ETH, stablecoins (USDC), or native DOP
-                tokens. DOP payments enjoy reduced fees with instant burn
-                mechanics, while other tokens trigger automatic DOP buy & burn.
+      {/* How It Works */}
+      <section className="relative px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <Reveal>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                How It Works
+              </h2>
+              <p className="mt-4 text-xl text-gray-400">
+                From connection to completion in five simple steps
               </p>
-              <div className="mt-6 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">ETH</p>
-                    <p className="text-xs text-gray-400">
-                      Standard escrow + buy & burn
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">
-                      USDC & Stablecoins
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Stable pricing + DOP conversion
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <div className="mt-1.5 h-1.5 w-1.5 rounded-full bg-purple-400" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">DOP</p>
-                    <p className="text-xs text-gray-400">
-                      Reduced fees & direct burn
-                    </p>
-                  </div>
-                </div>
-              </div>
             </div>
+          </Reveal>
 
-            {/* Fee Structure */}
-            <div className="container-panel p-6">
-              <div className="flex items-center gap-3 text-lg font-semibold text-purple-200">
-                <Flame className="h-6 w-6" />
-                <span>Transparent Fees</span>
-              </div>
-              <p className="mt-4 text-sm leading-relaxed text-gray-300">
-                Two simple tiers with built-in deflationary mechanics. Half of
-                every protocol fee is burned, creating sustainable scarcity
-                while funding development.
-              </p>
-              <div className="mt-6 space-y-3">
-                <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
-                  <p className="font-semibold text-purple-200 text-sm">
-                    Standard Rate
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-400">
-                    Up to 20% service fee, split 50/50 between burn mechanism
-                    and treasury
-                  </p>
-                </div>
-                <div className="rounded-lg border border-purple-600/30 bg-purple-600/10 p-4">
-                  <p className="font-semibold text-purple-200 text-sm">
-                    DOP Preferred
-                  </p>
-                  <p className="mt-1 text-xs leading-relaxed text-gray-300">
-                    Reduced 10% fee with immediate burn mechanics
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="mt-16">
+            <div className="mx-auto max-w-4xl">
+              {workflowSteps.map((step, index) => {
+                const Icon = step.icon;
+                const isLast = index === workflowSteps.length - 1;
 
-            {/* Security */}
-            <div className="container-panel p-6">
-              <div className="flex items-center gap-3 text-lg font-semibold text-purple-200">
-                <ShieldCheck className="h-6 w-6" />
-                <span>Enterprise Security</span>
-              </div>
-              <div className="mt-4 space-y-4">
-                <div className="flex gap-3">
-                  <Handshake className="h-4 w-4 text-purple-300 mt-1" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">
-                      Dual Confirmation
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Payment only releases when both parties approve
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <LockKeyhole className="h-4 w-4 text-purple-300 mt-1" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">
-                      Reentrancy Protection
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Industry-standard security patterns embedded
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <RefreshCcw className="h-4 w-4 text-purple-300 mt-1" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">
-                      Dispute Resolution
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Built-in appeal system for fair outcomes
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <Layers3 className="h-4 w-4 text-purple-300 mt-1" />
-                  <div>
-                    <p className="font-medium text-gray-200 text-sm">
-                      Upgradeable Design
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Safe iteration without compromising funds
-                    </p>
-                  </div>
-                </div>
-              </div>
+                return (
+                  <Reveal key={index} delay={index * 80}>
+                    <div className="relative">
+                      <div className="card-tilt flex items-center gap-6 rounded-2xl border border-gray-800/50 bg-gray-900/30 p-6 backdrop-blur-sm transition-all hover:border-purple-500/30">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-pink-600">
+                          <Icon className="icon-pop h-8 w-8 text-white" />
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-medium text-purple-400">
+                              {step.step}
+                            </span>
+                            <h3 className="text-xl font-semibold text-white">
+                              {step.title}
+                            </h3>
+                          </div>
+                          <p className="mt-2 text-gray-400">
+                            {step.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {!isLast && (
+                        <div className="ml-8 h-6 w-px bg-gradient-to-b from-purple-500/50 to-transparent"></div>
+                      )}
+                    </div>
+                  </Reveal>
+                );
+              })}
             </div>
           </div>
         </div>
       </section>
-      {/* CTA Section */}
-      <section className="relative py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="container-panel p-12 text-center">
-            <h3 className="text-3xl font-bold text-white">
-              Ready to build your reputation?
-            </h3>
-            <p className="mt-4 text-lg leading-relaxed text-gray-300">
-              Start with a listing or respond to open briefs. The protocol
-              handles escrow, validation, and deflationary alignment
-              automatically.
-            </p>
 
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <Link
-                href="/create"
-                className="inline-flex items-center gap-3 rounded-lg bg-white px-6 py-3 text-lg font-semibold text-black transition-all hover:bg-gray-100"
-              >
-                Launch a Listing
-              </Link>
-              <Link
-                href="/browse"
-                className="inline-flex items-center gap-3 rounded-lg border border-gray-600 bg-gray-800/50 px-6 py-3 text-lg font-medium text-white transition-all hover:bg-gray-700/50"
-              >
-                Explore Briefs
-              </Link>
+      {/* Use Cases */}
+      <section className="relative px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <Reveal>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                Made For Everyone
+              </h2>
+              <p className="mt-4 text-xl text-gray-400">
+                Whether you&apos;re hiring or getting hired, we&apos;ve got you
+                covered
+              </p>
             </div>
+          </Reveal>
+
+          <div className="mt-16 grid gap-8 lg:grid-cols-3">
+            {useCases.map((useCase, index) => {
+              const Icon = useCase.icon;
+
+              return (
+                <Reveal key={index} delay={index * 80}>
+                  <div className="group relative">
+                    <div className="card-tilt rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm transition-all hover:border-purple-500/30 hover:bg-gray-900/50">
+                      <div className="mb-6">
+                        <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-pink-600">
+                          <Icon className="icon-pop h-6 w-6 text-white" />
+                        </div>
+                      </div>
+
+                      <h3 className="mb-3 text-xl font-semibold text-white">
+                        {useCase.title}
+                      </h3>
+                      <p className="mb-6 text-gray-400">
+                        {useCase.description}
+                      </p>
+
+                      <ul className="space-y-2">
+                        {useCase.features.map((feature, featureIndex) => (
+                          <li
+                            key={featureIndex}
+                            className="flex items-center gap-2 text-sm text-gray-300"
+                          >
+                            <div className="h-1.5 w-1.5 rounded-full bg-purple-400"></div>
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </Reveal>
+              );
+            })}
           </div>
         </div>
       </section>
+
+      {/* Token Economics */}
+      <section className="relative px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <Reveal>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                Smart Economics
+              </h2>
+              <p className="mt-4 text-xl text-gray-400">
+                Transparent fees with built-in deflationary mechanics
+              </p>
+            </div>
+          </Reveal>
+
+          <div className="mt-16 grid gap-8 lg:grid-cols-2">
+            <Reveal>
+              <div className="card-tilt rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm">
+                <div className="mb-6">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600">
+                    <Coins className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+
+                <h3 className="mb-4 text-xl font-semibold text-white">
+                  Multi-Token Support
+                </h3>
+                <p className="mb-6 text-gray-400">
+                  Accept payments in ETH, stablecoins, or our native DOP token.
+                  Each payment type optimizes for different needs.
+                </p>
+
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-2 h-2 w-2 rounded-full bg-blue-400"></div>
+                    <div>
+                      <p className="font-medium text-white">
+                        ETH & Stablecoins
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        Standard fees with automatic DOP buyback
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="mt-2 h-2 w-2 rounded-full bg-purple-400"></div>
+                    <div>
+                      <p className="font-medium text-white">DOP Token</p>
+                      <p className="text-sm text-gray-400">
+                        Reduced fees with direct burn mechanism
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+
+            <Reveal delay={100}>
+              <div className="card-tilt rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm">
+                <div className="mb-6">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-orange-600 to-red-600">
+                    <Flame className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+
+                <h3 className="mb-4 text-xl font-semibold text-white">
+                  Deflationary Model
+                </h3>
+                <p className="mb-6 text-gray-400">
+                  Every transaction burns tokens, creating sustainable value
+                  while funding platform development.
+                </p>
+
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4">
+                    <p className="font-medium text-purple-200">
+                      Standard Rate: 2.5%
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      50% burned, 50% to development
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
+                    <p className="font-medium text-purple-200">
+                      DOP Rate: 1.5%
+                    </p>
+                    <p className="text-sm text-gray-300">
+                      Direct burn with reduced fees
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+      {/* Security */}
+      <section className="relative px-6 py-20">
+        <div className="mx-auto max-w-6xl">
+          <Reveal>
+            <div className="text-center">
+              <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                Enterprise Security
+              </h2>
+              <p className="mt-4 text-xl text-gray-400">
+                Bank-grade protection built into every transaction
+              </p>
+            </div>
+          </Reveal>
+
+          <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {securityFeatures.map((feature, index) => {
+              const Icon = feature.icon;
+
+              return (
+                <Reveal key={index} delay={index * 80}>
+                  <div className="group relative">
+                    <div className="card-tilt rounded-2xl border border-gray-800/50 bg-gray-900/30 p-6 text-center backdrop-blur-sm transition-all hover:border-purple-500/30 hover:bg-gray-900/50">
+                      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-gray-600 to-gray-700">
+                        <Icon className="icon-pop h-6 w-6 text-white" />
+                      </div>
+                      <h3 className="mb-2 text-lg font-semibold text-white">
+                        {feature.title}
+                      </h3>
+                      <p className="text-sm text-gray-400">
+                        {feature.description}
+                      </p>
+                    </div>
+                  </div>
+                </Reveal>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="relative px-6 py-20">
+        <div className="mx-auto max-w-4xl text-center">
+          <Reveal>
+            <div className="relative overflow-hidden rounded-3xl border border-purple-500/20 bg-gradient-to-r from-purple-500/10 to-pink-500/10 p-12 backdrop-blur-sm">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600/5 to-pink-600/5"></div>
+              <div className="relative">
+                <h2 className="text-3xl font-bold text-white sm:text-4xl">
+                  Ready to Build the Future?
+                </h2>
+                <p className="mt-4 text-xl text-gray-300">
+                  Join thousands of creators and businesses already using our
+                  platform
+                </p>
+
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+                  <Link
+                    href="/create"
+                    aria-label="Create a listing and start a project"
+                    className="inline-flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-lg font-semibold text-black transition-all hover:bg-gray-100"
+                  >
+                    <FileText className="h-5 w-5" />
+                    <span>Create Listing</span>
+                  </Link>
+
+                  <Link
+                    href="/browse"
+                    aria-label="Explore the marketplace"
+                    className="inline-flex items-center gap-2 rounded-xl border border-gray-600/50 bg-gray-900/50 px-8 py-4 text-lg font-medium text-white backdrop-blur-sm transition-all hover:border-gray-500"
+                  >
+                    <span>Explore Marketplace</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer className="relative border-t border-gray-800 py-12">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center justify-between gap-6 text-sm text-gray-500">
-            <span>© {new Date().getFullYear()} DOP Marketplace (Beta)</span>
+      <footer className="relative border-t border-gray-800/50 px-6 py-12">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <span className="text-gray-400">
+              © {new Date().getFullYear()} DOP Marketplace. Building the future
+              of work.
+            </span>
             <div className="flex gap-8">
               <Link
                 href="/terms"
-                className="transition-colors hover:text-gray-300"
+                className="text-gray-400 transition-colors hover:text-white"
               >
                 Terms
               </Link>
               <Link
                 href="/privacy"
-                className="transition-colors hover:text-gray-300"
+                className="text-gray-400 transition-colors hover:text-white"
               >
                 Privacy
               </Link>
               <Link
                 href="/docs"
-                className="transition-colors hover:text-gray-300"
+                className="text-gray-400 transition-colors hover:text-white"
               >
-                Documentation
+                Docs
               </Link>
             </div>
           </div>
         </div>
       </footer>
-      {/* Local styles for metallic silver effect and grid animations */}
+
+      {/* Enhanced Styles */}
       <style jsx global>{`
         .metallic-silver {
           background: linear-gradient(
-            100deg,
-            #f5f7fa 0%,
-            #cfd3d9 20%,
-            #ffffff 38%,
-            #babfc6 55%,
-            #f7f9fb 72%,
-            #d5d9df 84%,
-            #ffffff 100%
+            135deg,
+            #f8fafc 0%,
+            #e2e8f0 25%,
+            #ffffff 50%,
+            #f1f5f9 75%,
+            #e2e8f0 100%
           );
           -webkit-background-clip: text;
           background-clip: text;
           color: transparent;
-          filter: drop-shadow(0 2px 4px rgba(255, 255, 255, 0.05))
-            drop-shadow(0 4px 18px rgba(120, 110, 160, 0.25));
+          filter: drop-shadow(0 2px 4px rgba(255, 255, 255, 0.1));
         }
 
-        @keyframes grid-move {
+        .aurora {
+          background: conic-gradient(
+            from 0deg at 50% 50%,
+            rgba(76, 29, 149, 0.06),
+            rgba(124, 58, 237, 0.05),
+            rgba(88, 28, 135, 0.05),
+            rgba(76, 29, 149, 0.06)
+          );
+          mask-image: radial-gradient(
+            80% 70% at 50% 30%,
+            black,
+            transparent 70%
+          );
+          animation: aurora-move 20s linear infinite;
+        }
+
+        @keyframes aurora-move {
           0% {
-            transform: translate(0, 0);
+            transform: rotate(0deg) scale(1);
+          }
+          50% {
+            transform: rotate(180deg) scale(1.1);
           }
           100% {
-            transform: translate(100px, 100px);
+            transform: rotate(360deg) scale(1);
           }
         }
 
-        @keyframes diagonal-move {
+        /* Reveal on scroll */
+        .reveal {
+          opacity: 0;
+          transform: translateY(16px) scale(0.98);
+          transition: opacity 0.6s ease, transform 0.6s ease;
+          will-change: opacity, transform;
+        }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+
+        /* Card lift + icon micro-interactions */
+        .card-tilt {
+          transition: transform 0.25s ease, box-shadow 0.25s ease,
+            border-color 0.25s ease, background-color 0.25s ease;
+        }
+        .card-tilt:hover {
+          transform: translateY(-4px);
+        }
+        .icon-pop {
+          transition: transform 0.25s ease;
+        }
+        .group:hover .icon-pop {
+          transform: scale(1.08) rotate(-1.5deg);
+        }
+
+        /* Floating color orbs for hero depth */
+        .floating-orb {
+          position: absolute;
+          filter: blur(40px);
+          opacity: 0.45;
+          animation: float-slow 20s ease-in-out infinite;
+        }
+        @keyframes float-slow {
+          0%,
+          100% {
+            transform: translateY(0) translateX(0) scale(1);
+          }
+          50% {
+            transform: translateY(-20px) translateX(10px) scale(1.05);
+          }
+        }
+
+        /* Scroll indicator */
+        .scroll-indicator {
+          width: 24px;
+          height: 36px;
+          border: 2px solid rgba(255, 255, 255, 0.25);
+          border-radius: 16px;
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          bottom: -6px;
+          display: flex;
+          justify-content: center;
+          padding-top: 6px;
+        }
+        .scroll-indicator::after {
+          content: "";
+          width: 4px;
+          height: 8px;
+          border-radius: 4px;
+          background: rgba(255, 255, 255, 0.6);
+          animation: scroll 1.8s ease-in-out infinite;
+        }
+        @keyframes scroll {
           0% {
-            transform: translate(0, 0) rotate(0deg);
+            transform: translateY(0);
+            opacity: 1;
+          }
+          60% {
+            transform: translateY(12px);
+            opacity: 0.2;
           }
           100% {
-            transform: translate(80px, 80px) rotate(180deg);
+            transform: translateY(0);
+            opacity: 1;
           }
-        }
-
-        .grid-move {
-          animation: grid-move 20s linear infinite;
-        }
-
-        .diagonal-move {
-          animation: diagonal-move 30s linear infinite;
         }
       `}</style>
     </main>

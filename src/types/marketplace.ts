@@ -90,6 +90,10 @@ export interface OnchainUserProfile {
   joinedAt: bigint;
   userType: UserType;
   isVerified: boolean;
+  // Added: optional profile picture CID
+  profilePicCID?: string;
+  // Added: username
+  username?: string;
 }
 
 export interface Mission {

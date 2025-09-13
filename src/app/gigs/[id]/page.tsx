@@ -43,6 +43,7 @@ import {
   User2,
   ArrowLeft,
   Loader2,
+  UserCircle2,
 } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
@@ -228,17 +229,14 @@ export default function GigDetailsPage({
           cover = toGatewayUrl(meta?.image || null);
         } catch {}
 
-        // Fetch creator profile
+        // Fetch creator profile (always attempt; use joinedAt>0 to validate)
         let creatorProfile: OnchainUserProfile | null = null;
         let creatorProfileMeta: Partial<ProfileMetadata> | null = null;
         try {
           const prof = (await contract!.getProfile(
             l.creator
           )) as OnchainUserProfile;
-          if (
-            prof?.bio ||
-            (Array.isArray(prof?.skills) && prof.skills.length > 0)
-          ) {
+          if (prof && prof.joinedAt && prof.joinedAt !== BigInt(0)) {
             const normalized: OnchainUserProfile = {
               ...prof,
               skills: Array.isArray(prof.skills) ? prof.skills : [],
@@ -247,7 +245,6 @@ export default function GigDetailsPage({
                 : [],
             };
             creatorProfile = normalized;
-            // Try to fetch metadata for profile picture and name
             if (normalized.portfolioURIs.length > 0) {
               try {
                 const metaUrl = toGatewayUrl(normalized.portfolioURIs[0]);
@@ -948,129 +945,177 @@ export default function GigDetailsPage({
           </div>
 
           <aside className="space-y-4">
-            {/* Service Provider Info */}
-            {profile && (
-              <SectionCard
-                title="Service Provider"
-                icon={<User2 className="w-4 h-4" />}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  {profileMetadata?.avatar && (
-                    <Image
-                      src={
-                        toGatewayUrl(profileMetadata.avatar) ||
-                        profileMetadata.avatar
-                      }
-                      alt="Profile"
-                      width={48}
-                      height={48}
-                      className="w-12 h-12 rounded-full border border-white/10 object-cover"
-                      unoptimized
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
-                    />
-                  )}
-                  <div className="space-y-0.5">
-                    <div className="font-medium text-sm leading-tight">
-                      {profileMetadata?.name || formatAddress(state.creator)}
-                    </div>
-                    <div className="text-[11px] text-gray-400">
-                      {profile.userType === 1
-                        ? "Developer"
-                        : profile.userType === 2
-                        ? "Artist"
-                        : profile.userType === 3
-                        ? "KOL"
-                        : "User"}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {profile.isVerified && (
-                        <Badge
-                          variant="success"
-                          className="text-[10px] px-2 py-0.5"
-                        >
-                          Verified
-                        </Badge>
-                      )}
-                      {avgRating !== null && (
-                        <Badge
-                          variant="warning"
-                          className="text-[10px] px-2 py-0.5 flex items-center gap-1"
-                        >
-                          <Star className="w-3 h-3" />
-                          {avgRating.toFixed(1)}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                {profile.bio && (
-                  <p className="text-xs text-gray-300 leading-relaxed mb-3">
-                    {profile.bio}
-                  </p>
-                )}
-                {profileSkills.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {profileSkills.slice(0, 3).map((skill, index) => (
-                      <Badge
-                        key={index}
-                        variant="neutral"
-                        className="text-[10px] px-2 py-0.5"
-                      >
-                        {skill}
-                      </Badge>
-                    ))}
-                    {profileSkills.length > 3 && (
-                      <span className="text-[11px] text-gray-500">
-                        +{profileSkills.length - 3} more
-                      </span>
+            {/* Service Provider Info (with username & avatar fallback) */}
+            <SectionCard
+              title="Service Provider"
+              icon={<User2 className="w-4 h-4" />}
+            >
+              {profile ? (
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    {profile.profilePicCID ? (
+                      <Image
+                        src={
+                          toGatewayUrl(profile.profilePicCID) ||
+                          profile.profilePicCID.replace(
+                            /^ipfs:\/\//,
+                            "https://ipfs.io/ipfs/"
+                          )
+                        }
+                        alt="Avatar"
+                        width={48}
+                        height={48}
+                        className="w-12 h-12 rounded-full border border-white/10 object-cover"
+                        unoptimized
+                      />
+                    ) : profileMetadata?.avatar ? (
+                      <Image
+                        src={
+                          toGatewayUrl(profileMetadata.avatar) ||
+                          profileMetadata.avatar
+                        }
+                        alt="Avatar"
+                        width={48}
+                        height={48}
+                        className="w-12 h-12 rounded-full border border-white/10 object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full border border-white/10 bg-gray-800 flex items-center justify-center">
+                        <UserCircle2 className="w-7 h-7 text-gray-500" />
+                      </div>
                     )}
-                  </div>
-                )}
-                {parsedReviews.length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {parsedReviews.map((r, idx) => (
-                      <div
-                        key={idx}
-                        className="text-[11px] border border-white/10 rounded p-2 space-y-1 bg-gray-900/40"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-yellow-300 flex items-center gap-0.5">
-                            {"★".repeat(r.rating)}
-                          </span>
-                          <span className="text-gray-500">
-                            {r.timestamp
-                              ? timeAgo(Math.floor(r.timestamp))
-                              : ""}
-                          </span>
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="font-medium text-sm leading-tight truncate">
+                        {profile.username
+                          ? `@${profile.username}`
+                          : profileMetadata?.name ||
+                            formatAddress(state.creator)}
+                      </div>
+                      {profile.username && profileMetadata?.name && (
+                        <div className="text-[11px] text-gray-500 truncate">
+                          {profileMetadata.name}
                         </div>
-                        {r.text && (
-                          <p className="text-gray-300 line-clamp-3">
-                            {truncateText(r.text, 120)}
-                          </p>
+                      )}
+                      <div className="text-[11px] text-gray-400">
+                        {profile.userType === 1
+                          ? "Developer"
+                          : profile.userType === 2
+                          ? "Artist"
+                          : profile.userType === 3
+                          ? "KOL"
+                          : "User"}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {profile.isVerified && (
+                          <Badge
+                            variant="success"
+                            className="text-[10px] px-2 py-0.5"
+                          >
+                            Verified
+                          </Badge>
+                        )}
+                        {avgRating !== null && (
+                          <Badge
+                            variant="warning"
+                            className="text-[10px] px-2 py-0.5 flex items-center gap-1"
+                          >
+                            <Star className="w-3 h-3" />
+                            {avgRating.toFixed(1)}
+                          </Badge>
                         )}
                       </div>
-                    ))}
-                    {hasMoreReviews && (
-                      <button
-                        onClick={loadMoreReviews}
-                        disabled={reviewsLoadingMore}
-                        className="w-full text-[11px] border border-white/10 rounded px-2 py-1 hover:bg-white/5 disabled:opacity-50"
-                      >
-                        {reviewsLoadingMore ? "Loading..." : "Load more"}
-                      </button>
-                    )}
+                    </div>
                   </div>
-                )}
-                <Link
-                  href={`/profile/${state.creator}`}
-                  className="block w-full text-center text-xs px-4 py-2 border border-white/10 rounded hover:bg-white/5 transition-colors"
-                >
-                  View Full Profile
-                </Link>
-              </SectionCard>
-            )}
+                  {profile.bio && (
+                    <p className="text-xs text-gray-300 leading-relaxed mb-3">
+                      {profile.bio}
+                    </p>
+                  )}
+                  {profileSkills.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {profileSkills.slice(0, 3).map((skill, index) => (
+                        <Badge
+                          key={index}
+                          variant="neutral"
+                          className="text-[10px] px-2 py-0.5"
+                        >
+                          {skill}
+                        </Badge>
+                      ))}
+                      {profileSkills.length > 3 && (
+                        <span className="text-[11px] text-gray-500">
+                          +{profileSkills.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {parsedReviews.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {parsedReviews.map((r, idx) => (
+                        <div
+                          key={idx}
+                          className="text-[11px] border border-white/10 rounded p-2 space-y-1 bg-gray-900/40"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-yellow-300 flex items-center gap-0.5">
+                              {"★".repeat(r.rating)}
+                            </span>
+                            <span className="text-gray-500">
+                              {r.timestamp
+                                ? timeAgo(Math.floor(r.timestamp))
+                                : ""}
+                            </span>
+                          </div>
+                          {r.text && (
+                            <p className="text-gray-300 line-clamp-3">
+                              {truncateText(r.text, 120)}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {hasMoreReviews && (
+                        <button
+                          onClick={loadMoreReviews}
+                          disabled={reviewsLoadingMore}
+                          className="w-full text-[11px] border border-white/10 rounded px-2 py-1 hover:bg-white/5 disabled:opacity-50"
+                        >
+                          {reviewsLoadingMore ? "Loading..." : "Load more"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <Link
+                    href={`/profile/${state.creator}`}
+                    className="block w-full text-center text-xs px-4 py-2 border border-white/10 rounded hover:bg-white/5 transition-colors"
+                  >
+                    View Full Profile
+                  </Link>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full border border-white/10 bg-gray-800 flex items-center justify-center">
+                      <UserCircle2 className="w-7 h-7 text-gray-500" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="font-medium text-sm leading-tight">
+                        {formatAddress(state.creator)}
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        Profile not created yet
+                      </div>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/profile/${state.creator}`}
+                    className="block w-full text-center text-xs px-4 py-2 border border-white/10 rounded hover:bg-white/5 transition-colors"
+                  >
+                    View Profile Page
+                  </Link>
+                </div>
+              )}
+            </SectionCard>
 
             {/* Pricing */}
             <SectionCard title="Pricing" icon={<Star className="w-4 h-4" />}>

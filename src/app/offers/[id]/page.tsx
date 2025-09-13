@@ -16,7 +16,6 @@ import {
   ListingMetadata,
 } from "@/types/marketplace";
 import {
-  formatAddress,
   truncateText,
   formatTokenAmount,
   tokenSymbolFor,
@@ -44,6 +43,7 @@ import {
   RefreshCcw,
   Star as StarIcon,
   X as CloseIcon,
+  UserCircle2,
 } from "lucide-react";
 
 // Helpers for escrow labels (kept local; not in shared utils yet)
@@ -172,6 +172,52 @@ export default function OfferDetailsPage({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [showFees, setShowFees] = useState(false);
+  // Minimal cached user profiles (username + profilePicCID)
+  const [profiles, setProfiles] = useState<
+    Record<string, { username?: string; profilePicCID?: string }>
+  >({});
+
+  const Identity = ({ addr }: { addr: string }) => {
+    const lower = addr.toLowerCase();
+    const p = profiles[lower];
+    const avatarUrl = p?.profilePicCID ? toGatewayUrl(p.profilePicCID) : null;
+    const display = p?.username
+      ? `@${p.username}`
+      : `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+    return (
+      <Link
+        href={`/profile/${addr}`}
+        className="inline-flex items-center gap-1.5 group/avatar max-w-[140px]"
+      >
+        {avatarUrl ? (
+          <span className="relative w-5 h-5 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">
+            <Image
+              src={avatarUrl}
+              alt={display}
+              fill
+              sizes="20px"
+              className="object-cover"
+              unoptimized
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          </span>
+        ) : (
+          <UserCircle2 className="w-5 h-5 text-gray-500" />
+        )}
+        <span
+          className={
+            p?.username
+              ? "text-gray-100 font-medium truncate"
+              : "text-gray-400 truncate"
+          }
+        >
+          {display}
+        </span>
+      </Link>
+    );
+  };
 
   // Helper: consistent token amount + symbol rendering
   const displayToken = (
@@ -248,6 +294,63 @@ export default function OfferDetailsPage({
     ((isClientWallet && !escrow.clientValidated) ||
       (isProviderWallet && !escrow.providerValidated));
   const canDispute = escrow && escrow.status === EscrowStatus.IN_PROGRESS;
+
+  // Fetch minimal profiles for involved addresses once offer & listing loaded (placed after address derivations)
+  useEffect(() => {
+    if (!contract) return;
+    const addrs: string[] = [];
+    if (offer) addrs.push(offer.proposer);
+    if (listing) addrs.push(listing.creator);
+    if (clientAddress) addrs.push(clientAddress);
+    if (disputeHeader) addrs.push(disputeHeader.openedBy);
+    appeals.forEach((a) => addrs.push(a.by));
+    const unique = Array.from(new Set(addrs.map((a) => a.toLowerCase())));
+    const toFetch = unique.filter((a) => !profiles[a]);
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates: Record<
+        string,
+        { username?: string; profilePicCID?: string }
+      > = {};
+      await Promise.all(
+        toFetch.map(async (addr) => {
+          try {
+            interface RawProfile {
+              joinedAt: bigint;
+              username?: string;
+              profilePicCID?: string;
+            }
+            const p: RawProfile = await (
+              contract as unknown as {
+                getProfile: (a: string) => Promise<RawProfile>;
+              }
+            ).getProfile(addr);
+            if (p && p.joinedAt && Number(p.joinedAt) > 0) {
+              updates[addr] = {
+                username: p.username || undefined,
+                profilePicCID: p.profilePicCID || undefined,
+              };
+            }
+          } catch {}
+        })
+      );
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setProfiles((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    contract,
+    offer,
+    listing,
+    clientAddress,
+    disputeHeader,
+    appeals,
+    profiles,
+  ]);
 
   useEffect(() => {
     async function load() {
@@ -576,7 +679,7 @@ export default function OfferDetailsPage({
         offer.paymentToken as string
       ) as unknown as ERC20;
       const tx = await token.approve(contract!.contractAddress, offer.amount);
-      await tx.wait();
+      await tx;
       await refreshAllowance();
       toast.showSuccess(
         "Success",
@@ -615,7 +718,7 @@ export default function OfferDetailsPage({
           offer.id as bigint,
           offer.amount
         );
-        await tx.wait();
+        await tx;
         toast.showSuccess("Success", "Offer accepted");
         window.location.reload();
         return;
@@ -631,7 +734,7 @@ export default function OfferDetailsPage({
       }
 
       const tx = await contract!.acceptOffer(offer.id as bigint);
-      await tx.wait();
+      await tx;
       toast.showSuccess("Success", "Offer accepted");
       window.location.reload();
     } catch (error: unknown) {
@@ -671,7 +774,7 @@ export default function OfferDetailsPage({
         setSubmitting(true);
         try {
           const tx = await contract!.cancelOffer(offer.id as bigint);
-          await tx.wait();
+          await tx;
           window.location.reload();
         } catch (error: unknown) {
           console.error("Cancel offer failed:", error);
@@ -1182,8 +1285,8 @@ export default function OfferDetailsPage({
             {disputeHeader ? (
               <div className="space-y-1">
                 <div className="flex flex-wrap gap-4 text-gray-300">
-                  <span>
-                    Opened By: {formatAddress(disputeHeader.openedBy)}
+                  <span className="flex items-center gap-1">
+                    Opened By: <Identity addr={disputeHeader.openedBy} />
                   </span>
                   <span>
                     Opened At:{" "}
@@ -1221,7 +1324,9 @@ export default function OfferDetailsPage({
                           className="rounded border border-white/10 p-2 text-xs text-gray-300"
                         >
                           <div className="flex flex-wrap items-center gap-3">
-                            <span>By: {formatAddress(a.by)}</span>
+                            <span className="flex items-center gap-1">
+                              By: <Identity addr={a.by} />
+                            </span>
                             <span>
                               At:{" "}
                               {new Date(
@@ -1506,27 +1611,37 @@ export default function OfferDetailsPage({
                   </div>
                 )}
                 {showParticipants && (
-                  <div className="rounded border border-gray-800 p-3 text-xs space-y-1 bg-gray-900/40">
-                    <div className="flex justify-between">
+                  <div className="rounded border border-gray-800 p-3 text-xs space-y-3 bg-gray-900/40">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-gray-500">Listing Creator</span>
-                      <span className="text-white">
-                        {formatAddress(listing.creator)}
-                        {isListingCreator && " • you"}
-                      </span>
+                      <div className="flex items-center gap-2 text-white">
+                        <Identity addr={listing.creator} />
+                        {isListingCreator && (
+                          <span className="text-gray-500">• you</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-gray-500">Proposer</span>
-                      <span className="text-white">
-                        {formatAddress(offer.proposer)}
-                        {isProposer && " • you"}
-                      </span>
+                      <div className="flex items-center gap-2 text-white">
+                        <Identity addr={offer.proposer} />
+                        {isProposer && (
+                          <span className="text-gray-500">• you</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex items-center justify-between gap-2">
                       <span className="text-gray-500">Client</span>
-                      <span className="text-white">
-                        {clientAddress ? formatAddress(clientAddress) : "-"}
-                        {isClientWallet && " • you"}
-                      </span>
+                      <div className="flex items-center gap-2 text-white">
+                        {clientAddress ? (
+                          <Identity addr={clientAddress} />
+                        ) : (
+                          "-"
+                        )}
+                        {isClientWallet && (
+                          <span className="text-gray-500">• you</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

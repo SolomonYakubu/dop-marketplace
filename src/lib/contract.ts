@@ -72,6 +72,8 @@ interface ProfileStruct {
   joinedAt: bigint;
   userType: bigint; // enum/uint8
   isVerified: boolean;
+  profilePicCID: string; // added
+  username: string; // added
 }
 
 interface EscrowStruct {
@@ -880,6 +882,8 @@ export class MarketplaceContract {
       joinedAt: p.joinedAt,
       userType: Number(p.userType) as UserType,
       isVerified: p.isVerified,
+      profilePicCID: p.profilePicCID,
+      username: p.username,
     };
     this.cacheSet(key, profile, opts?.ttlMs);
     return profile;
@@ -889,7 +893,9 @@ export class MarketplaceContract {
     bio: string,
     skills: string[],
     portfolioURL: string,
-    userType: number
+    userType: number,
+    username: string,
+    profilePicCID?: string
   ) {
     if (!this.signer) throw new Error("Signer required for write operations");
 
@@ -905,7 +911,9 @@ export class MarketplaceContract {
       bio,
       skills,
       portfolioURIs,
-      userType
+      userType,
+      username,
+      profilePicCID || ""
     );
     const receipt = await tx.wait();
     try {
@@ -915,7 +923,12 @@ export class MarketplaceContract {
     return receipt;
   }
 
-  async updateProfile(bio: string, skills: string[], portfolioURL: string) {
+  async updateProfile(
+    bio: string,
+    skills: string[],
+    portfolioURL: string,
+    profilePicCID?: string
+  ) {
     if (!this.signer) throw new Error("Signer required for write operations");
 
     // Validate portfolio URL
@@ -926,7 +939,12 @@ export class MarketplaceContract {
     // Convert single URL to array for contract compatibility
     const portfolioURIs = portfolioURL ? [portfolioURL] : [];
 
-    const tx = await this.contract.updateProfile(bio, skills, portfolioURIs);
+    const tx = await this.contract.updateProfile(
+      bio,
+      skills,
+      portfolioURIs,
+      profilePicCID || ""
+    );
     const receipt = await tx.wait();
     try {
       const addr = await this.signer.getAddress();

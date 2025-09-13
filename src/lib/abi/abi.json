@@ -625,6 +625,25 @@
         "internalType": "address",
         "name": "user",
         "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "newCid",
+        "type": "string"
+      }
+    ],
+    "name": "ProfilePicUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
       }
     ],
     "name": "ProfileUpdated",
@@ -710,6 +729,50 @@
       }
     ],
     "name": "Upgraded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "oldUsername",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "newUsername",
+        "type": "string"
+      }
+    ],
+    "name": "UsernameChanged",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "username",
+        "type": "string"
+      }
+    ],
+    "name": "UsernameRegistered",
     "type": "event"
   },
   {
@@ -902,6 +965,16 @@
         "internalType": "enum MarketplaceUpgradeable.UserType",
         "name": "userType",
         "type": "uint8"
+      },
+      {
+        "internalType": "string",
+        "name": "username",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "profilePicCID",
+        "type": "string"
       }
     ],
     "name": "createProfile",
@@ -1616,6 +1689,16 @@
         "internalType": "bool",
         "name": "isVerified",
         "type": "bool"
+      },
+      {
+        "internalType": "string",
+        "name": "profilePicCID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "username",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -1686,6 +1769,25 @@
         "internalType": "enum MarketplaceUpgradeable.Badge[]",
         "name": "",
         "type": "uint8[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      }
+    ],
+    "name": "getUsername",
+    "outputs": [
+      {
+        "internalType": "string",
+        "name": "",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -2100,6 +2202,16 @@
         "internalType": "bool",
         "name": "isVerified",
         "type": "bool"
+      },
+      {
+        "internalType": "string",
+        "name": "profilePicCID",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "username",
+        "type": "string"
       }
     ],
     "stateMutability": "view",
@@ -2324,6 +2436,19 @@
   {
     "inputs": [
       {
+        "internalType": "string",
+        "name": "cid",
+        "type": "string"
+      }
+    ],
+    "name": "setProfilePic",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "address",
         "name": "_dop",
         "type": "address"
@@ -2348,6 +2473,19 @@
       }
     ],
     "name": "setTreasury",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "newUsername",
+        "type": "string"
+      }
+    ],
+    "name": "setUsername",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -2401,6 +2539,11 @@
         "internalType": "string[]",
         "name": "portfolioURIs",
         "type": "string[]"
+      },
+      {
+        "internalType": "string",
+        "name": "profilePicCID",
+        "type": "string"
       }
     ],
     "name": "updateProfile",
@@ -2511,6 +2654,25 @@
       {
         "internalType": "bool",
         "name": "wasDisputed",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "username",
+        "type": "string"
+      }
+    ],
+    "name": "usernameExists",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
         "type": "bool"
       }
     ],

@@ -32,6 +32,7 @@ import {
   ArrowRight,
   Loader2,
   ChevronRight,
+  UserCircle2,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -95,6 +96,13 @@ export default function GigsPage() {
     showBoostedFirst: true,
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Cache of creator profiles (minimal)
+  const [creatorProfiles, setCreatorProfiles] = useState<
+    Record<
+      string,
+      { username?: string; profilePicCID?: string; loaded: boolean }
+    >
+  >({});
 
   const provider = useMemo(
     () => new ethers.JsonRpcProvider(getRpcUrl(readChainId)),
@@ -189,6 +197,54 @@ export default function GigsPage() {
   useEffect(() => {
     loadListings();
   }, [loadListings, readChainId, provider]);
+
+  // Fetch minimal profiles (username + avatar) for creators
+  useEffect(() => {
+    if (!contract) return;
+    const creators = Array.from(
+      new Set(listings.map((l) => l.creator.toLowerCase()))
+    );
+    const toFetch = creators.filter((c) => !creatorProfiles[c]);
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          toFetch.map(async (addr) => {
+            try {
+              const p = (await contract.getProfile(addr)) as unknown as {
+                joinedAt?: bigint;
+                username?: string;
+                profilePicCID?: string;
+              };
+              if (!p || !p.joinedAt || p.joinedAt === BigInt(0)) {
+                return [addr, { loaded: true }] as const;
+              }
+              return [
+                addr,
+                {
+                  username: p.username,
+                  profilePicCID: p.profilePicCID,
+                  loaded: true,
+                },
+              ] as const;
+            } catch {
+              return [addr, { loaded: true }] as const;
+            }
+          })
+        );
+        if (cancelled) return;
+        setCreatorProfiles((prev) => {
+          const next = { ...prev };
+          for (const [addr, data] of results) next[addr] = data;
+          return next;
+        });
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contract, listings, creatorProfiles]);
 
   const filteredListings = useMemo(() => {
     let filtered = [...listings];
@@ -626,7 +682,50 @@ export default function GigsPage() {
                   </div>
                   <div className="mt-auto">
                     <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                      <span>By {formatAddress(listing.creator)}</span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {(() => {
+                          const key = listing.creator.toLowerCase();
+                          const prof = creatorProfiles[key];
+                          if (prof?.profilePicCID) {
+                            const src =
+                              toGatewayUrl(prof.profilePicCID) ||
+                              prof.profilePicCID.replace(
+                                /^ipfs:\/\//,
+                                "https://ipfs.io/ipfs/"
+                              );
+                            return (
+                              <div className="relative h-7 w-7 rounded-full overflow-hidden border border-white/10 shrink-0">
+                                <Image
+                                  src={src}
+                                  alt={
+                                    prof.username
+                                      ? `@${prof.username}`
+                                      : "profile avatar"
+                                  }
+                                  fill
+                                  sizes="28px"
+                                  className="object-cover"
+                                  unoptimized
+                                />
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="h-7 w-7 rounded-full border border-white/10 bg-gray-800 flex items-center justify-center shrink-0">
+                              <UserCircle2 className="w-4.5 h-4.5 text-gray-500" />
+                            </div>
+                          );
+                        })()}
+                        <span className="truncate max-w-[120px]">
+                          {(() => {
+                            const key = listing.creator.toLowerCase();
+                            const prof = creatorProfiles[key];
+                            if (!prof || !prof.loaded) return "Loading…";
+                            if (prof.username) return `@${prof.username}`;
+                            return formatAddress(listing.creator);
+                          })()}
+                        </span>
+                      </div>
                       <span>{timeAgo(Number(listing.createdAt))}</span>
                     </div>
                     <Link

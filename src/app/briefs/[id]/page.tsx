@@ -14,6 +14,7 @@ import {
   Coins,
   CheckCircle2,
   Timer,
+  UserCircle2,
 } from "lucide-react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
@@ -71,6 +72,11 @@ export default function BriefDetailsPage({
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<ListingState | null>(null);
   const [offers, setOffers] = useState<OfferWithEscrow[]>([]);
+  const [creatorProfile, setCreatorProfile] = useState<{
+    username?: string;
+    profilePicCID?: string;
+    loaded?: boolean;
+  } | null>(null);
   const [loadingOffers, setLoadingOffers] = useState(false);
   const toast = useToastContext();
   const [confirm, setConfirm] = useState<{
@@ -295,6 +301,36 @@ export default function BriefDetailsPage({
       loadOffers();
     }
   }, [state, loadOffers]);
+
+  // Fetch minimal creator profile (username + avatar) once listing loaded
+  useEffect(() => {
+    if (!contract || !state) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = (await contract.getProfile(state.creator)) as unknown as {
+          joinedAt?: bigint;
+          username?: string;
+          profilePicCID?: string;
+        };
+        if (!p || !p.joinedAt || p.joinedAt === BigInt(0)) {
+          if (!cancelled) setCreatorProfile({ loaded: true });
+          return;
+        }
+        if (!cancelled)
+          setCreatorProfile({
+            username: p.username,
+            profilePicCID: p.profilePicCID,
+            loaded: true,
+          });
+      } catch {
+        if (!cancelled) setCreatorProfile({ loaded: true });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contract, state]);
 
   const isOwner = !!(
     address &&
@@ -663,13 +699,50 @@ export default function BriefDetailsPage({
                     {String(state.id)}
                   </p>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 col-span-2">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">
                     Creator
                   </p>
-                  <p className="font-medium text-gray-200 text-xs break-all">
-                    {formatAddress(state.creator)}
-                  </p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {creatorProfile?.profilePicCID ? (
+                      <div className="relative h-8 w-8 rounded-full overflow-hidden border border-white/10 shrink-0">
+                        <Image
+                          src={
+                            toGatewayUrl(creatorProfile.profilePicCID) ||
+                            creatorProfile.profilePicCID.replace(
+                              /^ipfs:\/\//,
+                              "https://ipfs.io/ipfs/"
+                            )
+                          }
+                          alt={
+                            creatorProfile.username
+                              ? `@${creatorProfile.username}`
+                              : "avatar"
+                          }
+                          fill
+                          sizes="32px"
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-8 w-8 rounded-full border border-white/10 bg-gray-800 flex items-center justify-center shrink-0">
+                        <UserCircle2 className="w-5 h-5 text-gray-500" />
+                      </div>
+                    )}
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-medium text-gray-200 text-xs truncate max-w-[140px]">
+                        {creatorProfile?.username
+                          ? `@${creatorProfile.username}`
+                          : formatAddress(state.creator)}
+                      </span>
+                      {creatorProfile?.username && (
+                        <span className="text-[10px] text-gray-500 truncate max-w-[140px]">
+                          {formatAddress(state.creator)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500">

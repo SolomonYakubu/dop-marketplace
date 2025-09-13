@@ -8,8 +8,8 @@ import {
   Briefcase,
   CircleOff,
   Clock3,
-  User2,
   ChevronRight,
+  UserCircle2,
 } from "lucide-react";
 
 import Link from "next/link";
@@ -39,6 +39,13 @@ export default function BriefsPage() {
     showBoostedFirst: true,
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Minimal creator profile cache
+  const [creatorProfiles, setCreatorProfiles] = useState<
+    Record<
+      string,
+      { username?: string; profilePicCID?: string; loaded: boolean }
+    >
+  >({});
 
   const loadListings = useCallback(async () => {
     setLoading(true);
@@ -104,6 +111,53 @@ export default function BriefsPage() {
   useEffect(() => {
     loadListings();
   }, [loadListings]);
+
+  // Fetch minimal profile data for creators (username + avatar)
+  useEffect(() => {
+    if (!contract) return;
+    const creators = Array.from(
+      new Set(listings.map((l) => l.creator.toLowerCase()))
+    );
+    const toFetch = creators.filter((c) => !creatorProfiles[c]);
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const results = await Promise.all(
+          toFetch.map(async (addr) => {
+            try {
+              const p = (await contract.getProfile(addr)) as unknown as {
+                joinedAt?: bigint;
+                username?: string;
+                profilePicCID?: string;
+              };
+              if (!p || !p.joinedAt || p.joinedAt === BigInt(0))
+                return [addr, { loaded: true }] as const;
+              return [
+                addr,
+                {
+                  username: p.username,
+                  profilePicCID: p.profilePicCID,
+                  loaded: true,
+                },
+              ] as const;
+            } catch {
+              return [addr, { loaded: true }] as const;
+            }
+          })
+        );
+        if (cancelled) return;
+        setCreatorProfiles((prev) => {
+          const next = { ...prev };
+          for (const [k, v] of results) next[k] = v;
+          return next;
+        });
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contract, listings, creatorProfiles]);
 
   const filteredListings = useMemo(() => {
     let filtered = [...listings];
@@ -490,10 +544,48 @@ export default function BriefsPage() {
                   </div>
                 )}
                 <div className="mt-auto pt-2 flex items-center justify-between text-[11px] text-gray-500 mb-3">
-                  <span className="flex items-center gap-1">
-                    <User2 className="w-3.5 h-3.5" />
-                    {formatAddress(listing.creator)}
-                  </span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {(() => {
+                      const key = listing.creator.toLowerCase();
+                      const prof = creatorProfiles[key];
+                      if (prof?.profilePicCID) {
+                        const src =
+                          toGatewayUrl(prof.profilePicCID) ||
+                          prof.profilePicCID.replace(
+                            /^ipfs:\/\//,
+                            "https://ipfs.io/ipfs/"
+                          );
+                        return (
+                          <div className="relative h-7 w-7 rounded-full overflow-hidden border border-white/10 shrink-0">
+                            <Image
+                              src={src}
+                              alt={
+                                prof.username ? `@${prof.username}` : "avatar"
+                              }
+                              fill
+                              sizes="28px"
+                              className="object-cover"
+                              unoptimized
+                            />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="h-7 w-7 rounded-full border border-white/10 bg-gray-800 flex items-center justify-center shrink-0">
+                          <UserCircle2 className="w-4.5 h-4.5 text-gray-500" />
+                        </div>
+                      );
+                    })()}
+                    <span className="truncate max-w-[120px]">
+                      {(() => {
+                        const key = listing.creator.toLowerCase();
+                        const prof = creatorProfiles[key];
+                        if (!prof || !prof.loaded) return "Loading…";
+                        if (prof.username) return `@${prof.username}`;
+                        return formatAddress(listing.creator);
+                      })()}
+                    </span>
+                  </div>
                 </div>
                 <Link
                   href={`/briefs/${listing.id.toString()}`}

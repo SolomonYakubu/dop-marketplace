@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Filter as FilterIcon,
   X as XIcon,
@@ -11,7 +12,7 @@ import {
   Briefcase,
   Hammer,
   Clock3,
-  User2,
+  UserCircle2,
   Layers,
 } from "lucide-react";
 import { useAccount } from "wagmi";
@@ -46,6 +47,10 @@ export default function BrowsePage() {
   );
   const [showActiveOnly, setShowActiveOnly] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Minimal cached profiles for creators (username + profilePicCID)
+  const [profiles, setProfiles] = useState<
+    Record<string, { username?: string; profilePicCID?: string }>
+  >({});
 
   const chainId =
     chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
@@ -87,6 +92,104 @@ export default function BrowsePage() {
 
     loadListings();
   }, [chainId, contract, provider]);
+
+  // Fetch minimal profiles for creators (batch, no re-fetch if cached)
+  useEffect(() => {
+    if (!contract || listings.length === 0) return;
+    const creators = Array.from(
+      new Set(listings.map((l) => l.creator.toLowerCase()))
+    );
+    const toFetch = creators.filter((c) => !profiles[c]);
+    if (toFetch.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates: Record<
+        string,
+        { username?: string; profilePicCID?: string }
+      > = {};
+      await Promise.all(
+        toFetch.map(async (addr) => {
+          try {
+            interface RawProfile {
+              joinedAt: bigint;
+              username?: string;
+              profilePicCID?: string;
+            }
+            const p: RawProfile = await (
+              contract as unknown as {
+                getProfile: (a: string) => Promise<RawProfile>;
+              }
+            ).getProfile(addr);
+            if (p && p.joinedAt && Number(p.joinedAt) > 0) {
+              updates[addr] = {
+                username: p.username || undefined,
+                profilePicCID: p.profilePicCID || undefined,
+              };
+            }
+          } catch {}
+        })
+      );
+      if (!cancelled && Object.keys(updates).length) {
+        setProfiles((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contract, listings, profiles]);
+
+  const Identity = ({ addr }: { addr: string }) => {
+    const router = useRouter();
+    const lower = addr.toLowerCase();
+    const p = profiles[lower];
+    const avatarUrl = p?.profilePicCID ? toGatewayUrl(p.profilePicCID) : null;
+    const display = p?.username ? `@${p.username}` : formatAddress(addr);
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          router.push(`/profile/${addr}`);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            router.push(`/profile/${addr}`);
+          }
+        }}
+        className="inline-flex cursor-pointer items-center gap-1.5 max-w-[140px] group/avatar"
+      >
+        {avatarUrl ? (
+          <span className="relative w-5 h-5 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">
+            <Image
+              src={avatarUrl}
+              alt={display}
+              fill
+              sizes="20px"
+              className="object-cover"
+              unoptimized
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          </span>
+        ) : (
+          <UserCircle2 className="w-5 h-5 text-gray-500" />
+        )}
+        <span
+          className={
+            p?.username
+              ? "truncate font-medium text-gray-100"
+              : "truncate text-gray-400"
+          }
+        >
+          {display}
+        </span>
+      </span>
+    );
+  };
 
   // Filter and sort listings
   useEffect(() => {
@@ -315,8 +418,7 @@ export default function BrowsePage() {
                   </div>
                 )}
                 <div className="text-gray-500 flex items-center justify-end gap-1">
-                  <User2 className="w-3.5 h-3.5" />
-                  {formatAddress(listing.creator)}
+                  <Identity addr={listing.creator} />
                 </div>
               </div>
             </div>

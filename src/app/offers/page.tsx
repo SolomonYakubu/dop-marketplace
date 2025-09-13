@@ -18,6 +18,7 @@ import {
   CircleCheck,
   Loader2,
   ArrowLeft,
+  UserCircle2,
 } from "lucide-react";
 import clsx from "clsx";
 import { getTokenAddresses } from "@/lib/contract";
@@ -169,6 +170,10 @@ export default function OffersPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   // Track expanded state per-offer for mobile details
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Minimal cached profiles (username + avatar) keyed by lowercase address
+  const [profiles, setProfiles] = useState<
+    Record<string, { username?: string; profilePicCID?: string }>
+  >({});
 
   // Confirmation modal state
   const [confirm, setConfirm] = useState<{
@@ -388,6 +393,95 @@ export default function OffersPage() {
   useEffect(() => {
     loadOffers();
   }, [loadOffers]);
+
+  // Fetch minimal profiles for proposer & listing creator addresses
+  useEffect(() => {
+    if (!contract || offers.length === 0) return;
+    const needed = new Set<string>();
+    offers.forEach((o) => {
+      needed.add(o.proposer.toLowerCase());
+      if (o.listingCreator) needed.add(o.listingCreator.toLowerCase());
+    });
+    const toFetch = Array.from(needed).filter((a) => !profiles[a]);
+    if (toFetch.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const updates: Record<
+        string,
+        { username?: string; profilePicCID?: string }
+      > = {};
+      await Promise.all(
+        toFetch.map(async (addr) => {
+          try {
+            interface RawProfile {
+              joinedAt: bigint;
+              username?: string;
+              profilePicCID?: string;
+            }
+            const p: RawProfile = await (
+              contract as unknown as {
+                getProfile: (a: string) => Promise<RawProfile>;
+              }
+            ).getProfile(addr);
+            if (p && p.joinedAt && Number(p.joinedAt) > 0) {
+              updates[addr] = {
+                username: p.username || undefined,
+                profilePicCID: p.profilePicCID || undefined,
+              };
+            }
+          } catch {
+            // ignore failing profile fetch
+          }
+        })
+      );
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setProfiles((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [offers, contract, profiles]);
+
+  const Identity = ({ addr }: { addr: string }) => {
+    const lower = addr.toLowerCase();
+    const p = profiles[lower];
+    const avatarUrl = p?.profilePicCID ? toGatewayUrl(p.profilePicCID) : null;
+    const display = p?.username ? `@${p.username}` : formatAddress(addr);
+    return (
+      <Link
+        href={`/profile/${addr}`}
+        className="inline-flex items-center gap-2 group/avatar max-w-full"
+      >
+        {avatarUrl ? (
+          <span className="relative w-6 h-6 rounded-full overflow-hidden bg-gray-800 ring-1 ring-white/10 flex-shrink-0">
+            <Image
+              src={avatarUrl}
+              alt={display}
+              fill
+              sizes="24px"
+              className="object-cover"
+              unoptimized
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).style.display = "none";
+              }}
+            />
+          </span>
+        ) : (
+          <UserCircle2 className="w-6 h-6 text-gray-500" />
+        )}
+        <span
+          className={clsx(
+            "truncate",
+            p?.username ? "font-medium text-gray-100" : "text-gray-300"
+          )}
+        >
+          {display}
+        </span>
+      </Link>
+    );
+  };
 
   const filteredOffers = useMemo(() => {
     if (!address) return [];
@@ -660,13 +754,14 @@ export default function OffersPage() {
                       >
                         <DataRow
                           label="Proposer"
-                          value={formatAddress(offer.proposer)}
+                          value={<Identity addr={offer.proposer} />}
                         />
                         <DataRow
                           label="Creator"
                           value={
-                            offer.listingCreator &&
-                            formatAddress(offer.listingCreator)
+                            offer.listingCreator ? (
+                              <Identity addr={offer.listingCreator} />
+                            ) : undefined
                           }
                         />
                         <DataRow

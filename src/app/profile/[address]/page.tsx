@@ -388,10 +388,25 @@ export default function PublicProfilePage({
           <div className="lg:col-span-2 space-y-8">
             <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
               <div className="flex items-start gap-4">
-                {profileMeta?.avatar ? (
+                {profile?.profilePicCID ? (
+                  <Image
+                    src={
+                      toGatewayUrl(profile.profilePicCID) ||
+                      profile.profilePicCID.replace(
+                        /^ipfs:\/\//,
+                        "https://ipfs.io/ipfs/"
+                      )
+                    }
+                    alt="Profile avatar"
+                    width={72}
+                    height={72}
+                    className="w-18 h-18 rounded-full border border-white/10 object-cover"
+                    unoptimized
+                  />
+                ) : profileMeta?.avatar ? (
                   <Image
                     src={toGatewayUrl(profileMeta.avatar) || profileMeta.avatar}
-                    alt="Avatar"
+                    alt="Profile avatar"
                     width={72}
                     height={72}
                     className="w-18 h-18 rounded-full border border-white/10 object-cover"
@@ -405,8 +420,10 @@ export default function PublicProfilePage({
                 <div className="flex-1 min-w-0 space-y-2">
                   <h1 className="text-2xl font-semibold tracking-tight flex flex-wrap items-center gap-3">
                     <span className="truncate max-w-[260px]">
-                      {profileMeta?.name ||
-                        formatAddress(resolvedParams.address)}
+                      {profile?.username
+                        ? `@${profile.username}`
+                        : profileMeta?.name ||
+                          formatAddress(resolvedParams.address)}
                     </span>
                     {profile?.isVerified && (
                       <span className="px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 text-[11px] inline-flex items-center gap-1">
@@ -421,6 +438,11 @@ export default function PublicProfilePage({
                       </span>
                     )}
                   </h1>
+                  {profile?.username && profileMeta?.name && (
+                    <p className="text-xs text-gray-500 truncate max-w-[280px]">
+                      {profileMeta.name}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
                     <span className="px-2 py-0.5 rounded-full bg-gray-800/70">
                       {skillCount} skills
