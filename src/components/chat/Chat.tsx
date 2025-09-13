@@ -91,6 +91,8 @@ export function Chat({
   resolveIdentity,
   placeholder = "Type a message...",
   onMessages,
+  modal = true,
+  onClose,
 }: {
   provider: ChatDataProvider;
   address?: string | null;
@@ -98,6 +100,8 @@ export function Chat({
   resolveIdentity: IdentityResolver;
   placeholder?: string;
   onMessages?: (messages: ChatMessage[]) => void;
+  modal?: boolean; // when true, renders as full-screen/centered overlay and locks page scroll
+  onClose?: () => void; // called when user taps the header back/close button
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -113,6 +117,8 @@ export function Chat({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isCoarsePointerRef = useRef<boolean>(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // Track temporary object URLs for optimistic image previews so we can revoke later
+  const tempObjectURLsRef = useRef<Map<string, string[]>>(new Map());
   type PinListItem = {
     id: string;
     title: string;
@@ -218,8 +224,19 @@ export function Chat({
                         })}
                       </div>
                     )}
-                    <div className="mt-1 text-[9px] opacity-60 text-right">
-                      {TIME_FMT.format(new Date(m.created_at))}
+                    <div className="mt-1 text-[9px] opacity-60 text-right flex items-center gap-1 justify-end">
+                      {m.pending && (
+                        <span className="inline-flex items-center gap-1 text-yellow-300/80">
+                          <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                          sending
+                        </span>
+                      )}
+                      {m.failed && (
+                        <span className="inline-flex items-center gap-1 text-red-300">
+                          failed
+                        </span>
+                      )}
+                      <span>{TIME_FMT.format(new Date(m.created_at))}</span>
                     </div>
                   </div>
                 </div>
@@ -251,12 +268,42 @@ export function Chat({
       })
       .finally(() => setLoading(false));
     unsub = provider.subscribe((msgs) => {
-      const arr = Array.isArray(msgs) ? msgs : [];
-      setMessages(arr);
-      onMessagesRef.current?.(arr);
+      const incoming = Array.isArray(msgs) ? msgs : [];
+      setMessages((prev) => {
+        const serverIds = new Set(incoming.map((m) => m.id));
+        // Revoke any temp object URLs for messages that arrived from server
+        for (const id of serverIds) {
+          const urls = tempObjectURLsRef.current.get(id);
+          if (urls && urls.length) {
+            urls.forEach((u) => {
+              try {
+                if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+              } catch {}
+            });
+            tempObjectURLsRef.current.delete(id);
+          }
+        }
+        const keepOptimistic = prev.filter(
+          (m) => (m.pending || m.failed) && !serverIds.has(m.id)
+        );
+        const merged = [...incoming, ...keepOptimistic];
+        onMessagesRef.current?.(merged);
+        return merged;
+      });
     });
+    // Snapshot the map object (it's stable as we mutate it in place)
+    const urlMap = tempObjectURLsRef.current;
     return () => {
       unsub?.();
+      // Cleanup any remaining object URLs
+      for (const urls of urlMap.values()) {
+        for (const u of urls) {
+          try {
+            if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+          } catch {}
+        }
+      }
+      urlMap.clear();
     };
   }, [provider]);
 
@@ -264,14 +311,10 @@ export function Chat({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // Lock body scroll while the chat is open to avoid background scroll/gaps
+  // Lock body scroll while the chat is open to avoid background scroll/gaps (modal only)
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+    // no-op: previously locked body scroll for modal, removed to allow page scroll
+  }, [modal]);
 
   // Dynamic viewport sizing so the composer follows the mobile keyboard
   useEffect(() => {
@@ -306,6 +349,10 @@ export function Chat({
           isDesktop ? "0px" : `${topOffset}px`
         );
       }
+      // If keyboard changed the viewport and input is focused, keep bottom anchored
+      if (document.activeElement === textareaRef.current) {
+        bottomRef.current?.scrollIntoView({ block: "end" });
+      }
     }
     updateVh();
     const vv: VisualViewport | undefined =
@@ -330,138 +377,19 @@ export function Chat({
     }
   }, []);
 
-  // Lock background page scroll while chat is open; only chat messages should scroll
+  // Removed previous scroll-chain prevention to allow page scroll while chat is open
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const html = document.documentElement;
-    const body = document.body;
-    const prevHtmlOverflow = html.style.overflow;
-    const prevBodyOverflow = body.style.overflow;
-    const prevHtmlOverscroll = html.style.getPropertyValue(
-      "overscroll-behavior"
-    );
-    const prevBodyOverscroll = body.style.getPropertyValue(
-      "overscroll-behavior"
-    );
-    const prevBodyPosition = body.style.position;
-    const prevBodyTop = body.style.top;
-    const prevBodyWidth = body.style.width;
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    html.style.setProperty("overscroll-behavior", "contain");
-    body.style.setProperty("overscroll-behavior", "contain");
-
-    // Preserve current scroll position and prevent page movement
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
-
-    return () => {
-      html.style.overflow = prevHtmlOverflow;
-      body.style.overflow = prevBodyOverflow;
-      if (prevHtmlOverscroll)
-        html.style.setProperty("overscroll-behavior", prevHtmlOverscroll);
-      else html.style.removeProperty("overscroll-behavior");
-      if (prevBodyOverscroll)
-        body.style.setProperty("overscroll-behavior", prevBodyOverscroll);
-      else body.style.removeProperty("overscroll-behavior");
-      body.style.position = prevBodyPosition;
-      body.style.top = prevBodyTop;
-      body.style.width = prevBodyWidth;
-      window.scrollTo(0, scrollY);
-    };
-  }, []);
-
-  // Prevent scroll chaining to the page (iOS/Safari rubber-band and desktop wheel)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    let startY = 0;
-    const onTouchStart = (e: TouchEvent) => {
-      if (!containerRef.current) return;
-      if (!containerRef.current.contains(e.target as Node)) return;
-      startY = e.touches[0]?.clientY ?? 0;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const target = e.target as Element | null;
-      if (!target) return;
-      // If outside chat overlay, block scrolling
-      if (!container.contains(target)) {
-        e.preventDefault();
-        return;
-      }
-      const scroller =
-        (target.closest('[data-chat-scroll="1"]') as HTMLElement) ||
-        scrollerRef.current;
-      if (!scroller) {
-        // Non-scrolling parts of chat: prevent scroll so it doesn't chain to page
-        e.preventDefault();
-        return;
-      }
-      const currentY = e.touches[0]?.clientY ?? startY;
-      const dy = currentY - startY;
-      const atTop = scroller.scrollTop <= 0;
-      const atBottom =
-        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
-      if ((atTop && dy > 0) || (atBottom && dy < 0)) {
-        e.preventDefault();
-      }
-    };
-    const onWheel = (e: WheelEvent) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const target = e.target as Element | null;
-      if (!target) return;
-      if (!container.contains(target)) {
-        e.preventDefault();
-        return;
-      }
-      const scroller =
-        (target.closest('[data-chat-scroll="1"]') as HTMLElement) ||
-        scrollerRef.current ||
-        textareaRef.current;
-
-      if (!scroller) {
-        e.preventDefault();
-        return;
-      }
-      const delta = e.deltaY;
-      const atTop = scroller.scrollTop <= 0;
-      const atBottom =
-        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
-      if ((atTop && delta < 0) || (atBottom && delta > 0)) {
-        e.preventDefault();
-      }
-    };
-    const addOptsPassiveTrue: AddEventListenerOptions = {
-      passive: true,
-      capture: true,
-    };
-    const addOptsPassiveFalse: AddEventListenerOptions = {
-      passive: false,
-      capture: true,
-    };
-    document.addEventListener("touchstart", onTouchStart, addOptsPassiveTrue);
-    document.addEventListener("touchmove", onTouchMove, addOptsPassiveFalse);
-    document.addEventListener("wheel", onWheel, addOptsPassiveFalse);
-    return () => {
-      document.removeEventListener("touchstart", onTouchStart, true);
-      document.removeEventListener("touchmove", onTouchMove, true);
-      document.removeEventListener("wheel", onWheel, true);
-    };
-  }, []);
+    // intentionally empty
+  }, [modal]);
 
   // Auto-resize textarea based on content
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = 160; // px ~ ~6 lines
-    el.style.height = Math.min(el.scrollHeight, max) + "px";
-  }, [text]);
+  //   useEffect(() => {
+  //     const el = textareaRef.current;
+  //     if (!el) return;
+  //     el.style.height = "auto";
+  //     const max = 160; // px ~ ~6 lines
+  //     el.style.height = Math.min(el.scrollHeight, max) + "px";
+  //   }, [text]);
 
   async function handleSend() {
     if (!address) return;
@@ -469,10 +397,48 @@ export function Chat({
     if (!trimmed && files.length === 0) return;
     if (sending) return;
     setSending(true);
+    const clientId =
+      (globalThis.crypto && "randomUUID" in globalThis.crypto
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`) + "-client";
+    // Create optimistic attachments as blob URLs for instant preview
+    const optimisticAttachmentUrls: string[] = [];
+    if (files.length) {
+      const urls = files.map((f) => URL.createObjectURL(f));
+      optimisticAttachmentUrls.push(...urls);
+      tempObjectURLsRef.current.set(clientId, urls);
+    }
+    const optimistic: ChatMessage = {
+      id: clientId,
+      sender: address.toLowerCase(),
+      content: trimmed || undefined,
+      attachments: optimisticAttachmentUrls.length
+        ? optimisticAttachmentUrls
+        : undefined,
+      created_at: new Date().toISOString(),
+      message_type:
+        optimisticAttachmentUrls.length && trimmed
+          ? "mixed"
+          : optimisticAttachmentUrls.length
+          ? "image"
+          : "text",
+      pending: true,
+    } as ChatMessage;
+    setMessages((prev) => [...prev, optimistic]);
     try {
-      await provider.send({ text: trimmed, files }, { sender: address });
+      await provider.send(
+        { text: trimmed, files, clientId },
+        { sender: address }
+      );
       setText("");
       setFiles([]);
+    } catch {
+      // Mark optimistic message as failed
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === clientId ? { ...m, pending: false, failed: true } : m
+        )
+      );
     } finally {
       setSending(false);
       // Keep keyboard open on mobile by restoring focus
@@ -557,10 +523,36 @@ export function Chat({
     if (!address) return;
     setPinOpen(false);
     setPinLoading(false);
-    await provider.send(
-      { pin: { type: kind, id, title } },
-      { sender: address }
-    );
+    const clientId =
+      (globalThis.crypto && "randomUUID" in globalThis.crypto
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`) + "-client";
+    const url = kind === "gig" ? `/gigs/${id}` : `/briefs/${id}`;
+    const optimistic: ChatMessage = {
+      id: clientId,
+      sender: address.toLowerCase(),
+      content: undefined,
+      attachments: undefined,
+      created_at: new Date().toISOString(),
+      message_type: "pin",
+      linkUrl: url,
+      linkTitle: title,
+      linkType: kind,
+      pending: true,
+    } as ChatMessage;
+    setMessages((prev) => [...prev, optimistic]);
+    try {
+      await provider.send(
+        { pin: { type: kind, id, title }, clientId },
+        { sender: address }
+      );
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === clientId ? { ...m, pending: false, failed: true } : m
+        )
+      );
+    }
   }
 
   function parsePin(
@@ -728,22 +720,21 @@ export function Chat({
   return (
     <div
       ref={containerRef}
-      className="fixed left-0 right-0 top-0 bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:right-auto md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(820px,calc(100vw-6rem))] md:rounded-2xl md:shadow-2xl md:border md:border-white/10 bg-black/70 backdrop-blur flex flex-col z-30 overflow-hidden overscroll-contain"
-      style={{ height: "var(--chat-h, var(--chat-vh, 100dvh))" }}
+      className={
+        modal
+          ? "fixed left-0 right-0 top-[var(--vv-top,0px)] bottom-auto md:bottom-auto md:top-1/2 md:left-1/2 md:right-auto md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(820px,calc(100vw-6rem))] md:rounded-2xl md:shadow-2xl md:border md:border-white/10 bg-black/70 backdrop-blur flex flex-col z-30 overflow-hidden"
+          : "rounded-xl border border-white/10 bg-black/50 backdrop-blur flex flex-col overflow-hidden"
+      }
+      style={{
+        height: modal ? "var(--chat-h, var(--chat-vh, 100dvh))" : undefined,
+      }}
     >
       {/* Header */}
       <div className="h-12 sm:h-14 flex items-center justify-between px-2 sm:px-3 border-b border-white/10 bg-black/40">
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => {
-              // back/close behavior handled by optional onClose prop or router.back()
-              try {
-                // @ts-expect-error onClose may be injected later; fallback below
-                if (typeof onClose === "function") onClose();
-                else if (typeof window !== "undefined") history.back();
-              } catch {
-                // ignore
-              }
+              if (typeof onClose === "function") onClose();
             }}
             className="p-2 rounded hover:bg-white/5 text-gray-200"
             aria-label="Back"
@@ -829,7 +820,7 @@ export function Chat({
       <div
         ref={scrollerRef}
         data-chat-scroll="1"
-        className="flex-1 overflow-y-auto p-3 sm:p-4 thin-blue-scrollbar overscroll-contain [padding-bottom:env(safe-area-inset-bottom)]"
+        className="flex-1 overflow-y-auto p-3 sm:p-4 thin-blue-scrollbar [padding-bottom:env(safe-area-inset-bottom)]"
       >
         <div className="space-y-2 text-xs">
           <MessagesView items={messages} me={address} />
@@ -854,15 +845,15 @@ export function Chat({
               <div className="flex-1 flex items-center gap-1 rounded-xl border border-gray-800 bg-gray-900/70 px-2">
                 <textarea
                   ref={textareaRef}
-                  data-chat-scroll="1"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  onFocus={() =>
-                    inputWrapperRef.current?.scrollIntoView({
+                  onFocus={() => {
+                    // Keep composer snug to keyboard and view latest messages
+                    bottomRef.current?.scrollIntoView({
                       behavior: "smooth",
                       block: "end",
-                    })
-                  }
+                    });
+                  }}
                   onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
                     const isCoarse = isCoarsePointerRef.current;

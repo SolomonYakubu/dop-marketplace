@@ -170,6 +170,8 @@ export default function OfferDetailsPage({
     (addr: string) => profiles[addr.toLowerCase()],
     [profiles]
   );
+  // Chat modal toggle
+  const [chatOpen, setChatOpen] = useState(false);
 
   const Identity = ({ addr }: { addr: string }) => {
     const lower = addr.toLowerCase();
@@ -1536,27 +1538,47 @@ export default function OfferDetailsPage({
               </div>
             </div>
 
-            {/* Chat (participants only) - reusable component */}
+            {/* Chat (participants only) - modal trigger */}
             <div className="container-panel p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <MessageSquare className="w-4 h-4 text-gray-400" />
-                <h3 className="font-medium text-sm">Chat</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-gray-400" />
+                  <h3 className="font-medium text-sm">Chat</h3>
+                </div>
+                {canUseChat && (
+                  <button
+                    type="button"
+                    onClick={() => setChatOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-white text-black hover:opacity-90"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    Open chat
+                  </button>
+                )}
               </div>
+              {canUseChat && (
+                <p className="text-[11px] text-gray-400 mb-2">
+                  You can negotiate or chat with the client or proposer here.
+                </p>
+              )}
               {!canUseChat && (
-                <div className="text-sm text-gray-400 mb-2">
+                <div className="text-sm text-gray-400">
                   Only offer participants may chat.
                 </div>
               )}
-              {canUseChat && (
-                <Chat
-                  provider={offerChatProvider}
-                  address={address || null}
-                  canSend
-                  resolveIdentity={resolveIdentity}
-                  onMessages={handleChatMessages}
-                />
-              )}
             </div>
+
+            {canUseChat && chatOpen && (
+              <Chat
+                provider={offerChatProvider}
+                address={address || null}
+                canSend
+                resolveIdentity={resolveIdentity}
+                onMessages={handleChatMessages}
+                modal
+                onClose={() => setChatOpen(false)}
+              />
+            )}
 
             {/* Escrow Progress */}
             {renderEscrowProgress()}

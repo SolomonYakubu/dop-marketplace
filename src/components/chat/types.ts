@@ -4,6 +4,9 @@ export type ChatMessage = OfferChatMessage & {
   linkUrl?: string;
   linkTitle?: string;
   linkType?: "gig" | "brief";
+  // UI-only flags (not persisted)
+  pending?: boolean;
+  failed?: boolean;
 };
 
 export type SendMessageInput = {
@@ -15,6 +18,8 @@ export type SendMessageInput = {
     title?: string;
     url?: string; // optional explicit url override
   };
+  // If provided, providers should reuse this id for the persisted message
+  clientId?: string;
 };
 
 export interface ChatDataProvider {

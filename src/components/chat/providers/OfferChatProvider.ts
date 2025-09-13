@@ -121,9 +121,10 @@ export class OfferChatProvider implements ChatDataProvider {
       linkType?: "gig" | "brief";
     } = {
       id:
-        globalThis.crypto && "randomUUID" in globalThis.crypto
+        input.clientId ||
+        (globalThis.crypto && "randomUUID" in globalThis.crypto
           ? globalThis.crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`,
+          : `${Date.now()}-${Math.random()}`),
       sender: opts?.sender?.toLowerCase() || "",
       content: input.text || undefined,
       attachments: attachmentUris.length ? attachmentUris : undefined,
