@@ -586,8 +586,11 @@ export default function OfferDetailsPage({
       );
     } catch (error: unknown) {
       console.error("Token approval failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      toast.showError("Approval Failed", "Failed to approve tokens: " + msg);
+      toast.showContractError(
+        "Approval Failed",
+        error,
+        "Failed to approve tokens"
+      );
     } finally {
       setApproving(false);
     }
@@ -625,8 +628,7 @@ export default function OfferDetailsPage({
       window.location.reload();
     } catch (error: unknown) {
       console.error("Accept offer failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      toast.showError("Error", "Failed to accept offer: " + msg);
+      toast.showContractError("Error", error, "Failed to accept offer");
     } finally {
       setSubmitting(false);
     }
@@ -641,8 +643,7 @@ export default function OfferDetailsPage({
       window.location.reload();
     } catch (error: unknown) {
       console.error("Validate work failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      toast.showError("Error", "Failed to validate work: " + msg);
+      toast.showContractError("Error", error, "Failed to validate work");
     } finally {
       setSubmitting(false);
     }
@@ -664,8 +665,7 @@ export default function OfferDetailsPage({
           window.location.reload();
         } catch (error: unknown) {
           console.error("Cancel offer failed:", error);
-          const msg = error instanceof Error ? error.message : "Unknown error";
-          toast.showError("Error", "Failed to cancel offer: " + msg);
+          toast.showContractError("Error", error, "Failed to cancel offer");
         } finally {
           setSubmitting(false);
         }

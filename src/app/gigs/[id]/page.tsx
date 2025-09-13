@@ -619,8 +619,7 @@ export default function GigDetailsPage({
           // refresh my offer
           setMyOffer({ ...myOffer, cancelled: true });
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "Failed to cancel offer";
-          toast.showError("Cancel failed", msg);
+          toast.showContractError("Cancel failed", e);
         } finally {
           setOfferActionLoading(null);
         }
@@ -644,8 +643,7 @@ export default function GigDetailsPage({
           await tx.wait();
           toast.showSuccess("Dispute opened", "Refund request submitted.");
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "Failed to open dispute";
-          toast.showError("Dispute failed", msg);
+          toast.showContractError("Dispute failed", e);
         } finally {
           setOfferActionLoading(null);
         }

@@ -325,9 +325,8 @@ export default function OffersPage() {
         toast.showSuccess("Success", "Offer accepted successfully!");
         await loadOffers();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to accept offer";
         console.error("Failed to accept offer:", e);
-        toast.showError("Error", msg);
+        toast.showContractError("Error", e, "Failed to accept offer");
       } finally {
         setActionLoading(null);
       }
@@ -348,9 +347,8 @@ export default function OffersPage() {
         toast.showSuccess("Success", "Work validated successfully!");
         await loadOffers();
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to validate work";
         console.error("Failed to validate work:", e);
-        toast.showError("Error", msg);
+        toast.showContractError("Error", e, "Failed to validate work");
       } finally {
         setActionLoading(null);
       }
@@ -377,10 +375,8 @@ export default function OffersPage() {
             toast.showSuccess("Success", "Offer cancelled successfully!");
             await loadOffers();
           } catch (e) {
-            const msg =
-              e instanceof Error ? e.message : "Failed to cancel offer";
             console.error("Failed to cancel offer:", e);
-            toast.showError("Error", msg);
+            toast.showContractError("Error", e, "Failed to cancel offer");
           } finally {
             setActionLoading(null);
           }

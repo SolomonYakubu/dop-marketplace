@@ -14,11 +14,6 @@ export function useToast() {
   const addToast = (toast: Omit<ToastMessage, "id">) => {
     const id = Date.now().toString();
     setToasts((prev) => [...prev, { ...toast, id }]);
-
-    // Auto remove after 5 seconds
-    setTimeout(() => {
-      removeToast(id);
-    }, 5000);
   };
 
   const removeToast = (id: string) => {
@@ -31,6 +26,16 @@ export function useToast() {
 
   const showError = (title: string, message?: string) => {
     addToast({ type: "error", title, message });
+  };
+
+  // Convenience: format and show a smart contract / RPC error
+  const showContractError = (
+    title: string,
+    error: unknown,
+    fallback?: string
+  ) => {
+    const msg = handleContractError(error) || fallback || "Transaction failed";
+    addToast({ type: "error", title, message: msg });
   };
 
   const showWarning = (title: string, message?: string) => {
@@ -47,51 +52,89 @@ export function useToast() {
     removeToast,
     showSuccess,
     showError,
+    showContractError,
     showWarning,
     showInfo,
   };
 }
 
 // Error handling utility
-export function handleContractError(error: { message: string }): string {
-  if (error?.message) {
-    // Extract meaningful error messages from common Web3 errors
-    const message = error.message;
+export function handleContractError(error: unknown): string {
+  // Normalize to a human-readable string from various error shapes (ethers/viem/wagmi/RPC)
+  type ErrorLike = {
+    message?: string;
+    shortMessage?: string;
+    reason?: string;
+    error?: { message?: string };
+    info?: { error?: { message?: string } };
+    data?: { message?: string };
+    body?: string;
+    cause?: unknown;
+  };
 
-    if (message.includes("user rejected transaction")) {
-      return "Transaction was cancelled by user";
-    }
+  const extractRaw = (err: unknown): string | undefined => {
+    if (!err) return undefined;
+    if (typeof err === "string") return err;
+    const e = err as ErrorLike;
+    // Common fields
+    if (typeof e.shortMessage === "string") return e.shortMessage;
+    if (typeof e.reason === "string") return e.reason;
+    if (typeof e.message === "string") return e.message;
+    if (typeof e?.error?.message === "string") return e.error.message;
+    if (typeof e?.info?.error?.message === "string")
+      return e.info.error.message;
+    if (typeof e?.data?.message === "string") return e.data.message;
+    if (typeof e?.body === "string") return e.body;
+    return undefined;
+  };
 
-    if (message.includes("insufficient funds")) {
-      return "Insufficient funds to complete transaction";
-    }
+  const raw = extractRaw(error);
+  if (!raw) return "An unexpected error occurred";
 
-    if (message.includes("gas required exceeds allowance")) {
-      return "Transaction requires too much gas";
-    }
+  // Use lowercased copy for detection but keep original for display
+  const lc = raw.toLowerCase();
 
-    if (message.includes("nonce too low")) {
-      return "Please try again - transaction nonce issue";
-    }
-
-    if (message.includes("already known")) {
-      return "Transaction already pending";
-    }
-
-    // Try to extract revert reason
-    const revertMatch = message.match(/revert ([^"']+)/i);
-    if (revertMatch) {
-      return `Contract error: ${revertMatch[1]}`;
-    }
-
-    // Return first line of error message
-    const firstLine = message.split("\n")[0];
-    return firstLine.length > 100
-      ? firstLine.substring(0, 100) + "..."
-      : firstLine;
+  // Friendly mappings
+  if (
+    lc.includes("user rejected") ||
+    lc.includes("user denied") ||
+    lc.includes("rejected the request")
+  ) {
+    return "Transaction was cancelled by user";
+  }
+  if (lc.includes("insufficient funds")) {
+    return "Insufficient funds to complete transaction";
+  }
+  if (
+    lc.includes("gas required exceeds allowance") ||
+    lc.includes("intrinsic gas too low")
+  ) {
+    return "Transaction requires too much gas";
+  }
+  if (lc.includes("nonce too low")) {
+    return "Please try again - transaction nonce issue";
+  }
+  if (lc.includes("already known")) {
+    return "Transaction already pending";
   }
 
-  return "An unexpected error occurred";
+  // Extract revert reason when present
+  const revertRegex =
+    /revert(?:ed)?(?::|\swith\sreason\sstring)?\s*[:\s]*["']?([^"'\n]+)["']?/i;
+  const m1 = raw.match(revertRegex);
+  if (m1?.[1]) return m1[1];
+
+  // Viem-style cause
+  const cause = (error as ErrorLike)?.cause;
+  const causeMsg = extractRaw(cause);
+  if (causeMsg) {
+    const m2 = causeMsg.match(revertRegex);
+    if (m2?.[1]) return m2[1];
+  }
+
+  // Fallback: first line, trimmed
+  const firstLine = raw.split("\n")[0].trim();
+  return firstLine.length > 160 ? firstLine.slice(0, 160) + "…" : firstLine;
 }
 
 // Loading state hook

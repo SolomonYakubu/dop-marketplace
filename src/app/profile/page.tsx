@@ -123,8 +123,7 @@ export default function ProfilePage() {
         setProfile(fresh);
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to save profile";
-      toast.showError("Error", msg);
+      toast.showContractError("Error", e, "Failed to save profile");
     } finally {
       setSaving(false);
     }

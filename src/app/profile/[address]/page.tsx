@@ -307,8 +307,11 @@ export default function PublicProfilePage({
           }
         } catch {}
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Failed to load profile";
-        setError(msg);
+        setError(
+          typeof e === "string"
+            ? e
+            : (e as Error)?.message || "Failed to load profile"
+        );
       } finally {
         setLoading(false);
       }

@@ -16,6 +16,7 @@ export const ToastContext = createContext<{
   toasts: ToastMessage[];
   showSuccess: (title: string, message?: string) => void;
   showError: (title: string, message?: string) => void;
+  showContractError: (title: string, error: unknown, fallback?: string) => void;
   showWarning: (title: string, message?: string) => void;
   showInfo: (title: string, message?: string) => void;
 } | null>(null);
@@ -33,12 +34,26 @@ export function Providers({
   children: React.ReactNode;
   initialState?: State;
 }) {
-  const { toasts, removeToast, showSuccess, showError, showWarning, showInfo } =
-    useToast();
+  const {
+    toasts,
+    removeToast,
+    showSuccess,
+    showError,
+    showContractError,
+    showWarning,
+    showInfo,
+  } = useToast();
 
   const value = useMemo(
-    () => ({ toasts, showSuccess, showError, showWarning, showInfo }),
-    [toasts, showSuccess, showError, showWarning, showInfo]
+    () => ({
+      toasts,
+      showSuccess,
+      showError,
+      showContractError,
+      showWarning,
+      showInfo,
+    }),
+    [toasts, showSuccess, showError, showContractError, showWarning, showInfo]
   );
 
   return (

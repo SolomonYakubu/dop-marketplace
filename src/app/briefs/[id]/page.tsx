@@ -250,9 +250,8 @@ export default function BriefDetailsPage({
       await loadOffers();
       window.location.reload();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to submit offer";
       console.error("Failed to submit offer:", e);
-      toast.showError("Submit failed", msg);
+      toast.showContractError("Submit failed", e, "Failed to submit offer");
     } finally {
       setSubmittingOffer(false);
     }
@@ -270,9 +269,8 @@ export default function BriefDetailsPage({
       await loadOffers();
       window.location.reload();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to accept offer";
       console.error("Failed to accept offer:", e);
-      toast.showError("Accept failed", msg);
+      toast.showContractError("Accept failed", e);
     }
   }
 
@@ -286,9 +284,8 @@ export default function BriefDetailsPage({
       toast.showSuccess("Offer cancelled");
       await loadOffers();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to cancel offer";
       console.error("Failed to cancel offer:", e);
-      toast.showError("Cancel failed", msg);
+      toast.showContractError("Cancel failed", e);
     }
   }
 
