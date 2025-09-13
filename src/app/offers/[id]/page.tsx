@@ -752,8 +752,7 @@ export default function OfferDetailsPage({
       window.location.reload();
     } catch (error: unknown) {
       console.error("Open dispute with CID failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      toast.showError("Error", "Failed to open dispute: " + msg);
+      toast.showContractError("Error", error, "Failed to open dispute");
     } finally {
       setOpeningDispute(false);
     }
@@ -806,8 +805,7 @@ export default function OfferDetailsPage({
       window.location.reload();
     } catch (error: unknown) {
       console.error("Appeal with CID failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      toast.showError("Error", "Failed to submit appeal: " + msg);
+      toast.showContractError("Error", error, "Failed to submit appeal");
     } finally {
       setAppealing(false);
     }
@@ -845,8 +843,7 @@ export default function OfferDetailsPage({
       window.location.reload();
     } catch (error: unknown) {
       console.error("Leave review failed:", error);
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      toast.showError("Error", "Failed to submit review: " + msg);
+      toast.showContractError("Error", error, "Failed to submit review");
     } finally {
       setLeavingReview(false);
     }

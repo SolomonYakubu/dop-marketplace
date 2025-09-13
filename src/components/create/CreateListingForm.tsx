@@ -137,12 +137,8 @@ export function CreateListingForm({
       setDescription("");
       setCoverFile(null);
     } catch (e) {
-      const err = e as Error;
-      console.error(err);
-      toast.showError(
-        "Create failed",
-        err.message || "Failed to create listing"
-      );
+      console.error(e);
+      toast.showContractError("Create failed", e, "Failed to create listing");
     } finally {
       setSubmitting(false);
     }

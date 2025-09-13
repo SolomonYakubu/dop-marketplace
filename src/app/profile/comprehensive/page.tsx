@@ -159,9 +159,8 @@ export default function ComprehensiveProfilePage() {
       toast.showSuccess("Success", "Profile saved successfully!");
       await loadProfileData();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to save profile";
       console.error("Profile save error:", e);
-      toast.showError("Error", msg);
+      toast.showContractError("Error", e, "Failed to save profile");
     } finally {
       setSaving(false);
     }
