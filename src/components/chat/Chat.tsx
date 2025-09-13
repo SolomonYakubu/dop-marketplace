@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -126,6 +126,115 @@ export function Chat({
   const { contract } = useMarketplaceContract();
   const previewCacheRef = useRef<Map<string, PinListItem>>(new Map());
 
+  // Memoized messages view to avoid re-rendering the full list on every keystroke
+  const MessagesView = useMemo(() => {
+    function View({ items, me }: { items: ChatMessage[]; me?: string | null }) {
+      return (
+        <>
+          {loading && (
+            <div className="text-gray-500 text-center mt-4 text-xs">
+              Loading…
+            </div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="text-gray-500 text-center mt-8">
+              No messages yet.
+            </div>
+          )}
+          {items.map((m, i) => {
+            const mine = me && m.sender === me.toLowerCase();
+            const hasAttachments = m.attachments && m.attachments.length > 0;
+            const day = dayKeyUTC(new Date(m.created_at));
+            const prev = i > 0 ? items[i - 1] : null;
+            const prevDay = prev ? dayKeyUTC(new Date(prev.created_at)) : null;
+            return (
+              <div key={m.id}>
+                {i === 0 || day !== prevDay ? (
+                  <div className="text-[10px] text-gray-500 text-center my-2 select-none">
+                    {DATE_FMT.format(new Date(m.created_at))}
+                  </div>
+                ) : null}
+                <div
+                  className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[70%] rounded-2xl px-3 py-2 whitespace-pre-wrap break-words shadow-sm ${
+                      mine
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-800 text-gray-100"
+                    }`}
+                  >
+                    {!mine && (
+                      <div className="text-[10px] opacity-90 mb-1">
+                        <Identity addr={m.sender} resolve={resolveIdentity} />
+                      </div>
+                    )}
+                    {m.message_type === "pin" && m.linkUrl ? (
+                      <PinPreviewCard m={m} mine={!!mine} />
+                    ) : m.content ? (
+                      <div className="leading-relaxed">{m.content}</div>
+                    ) : null}
+                    {hasAttachments && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {m.attachments!.map((uri, idx) => {
+                          const gateway = uri.startsWith("ipfs://")
+                            ? `https://ipfs.io/ipfs/${uri.replace(
+                                "ipfs://",
+                                ""
+                              )}`
+                            : uri;
+                          const linkId = `${m.id}-att-${idx}`;
+                          return (
+                            <div key={uri} className="relative">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={gateway}
+                                alt="attachment"
+                                className="h-16 w-16 object-cover rounded border border-white/10 cursor-pointer hover:opacity-90 transition"
+                                onClick={() => setPreviewImage(gateway)}
+                                onError={(e) => {
+                                  const img =
+                                    e.currentTarget as HTMLImageElement;
+                                  img.style.display = "none";
+                                  const a = document.getElementById(linkId);
+                                  if (a) a.classList.remove("hidden");
+                                }}
+                              />
+                              <a
+                                id={linkId}
+                                href={gateway}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="hidden underline break-all text-[10px]"
+                              >
+                                {uri}
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[9px] opacity-60 text-right">
+                      {TIME_FMT.format(new Date(m.created_at))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      );
+    }
+    return View;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolveIdentity, TIME_FMT, DATE_FMT]);
+
+  // Keep a stable ref to onMessages to avoid resubscribing when parent re-renders
+  const onMessagesRef = useRef<typeof onMessages>(onMessages);
+  useEffect(() => {
+    onMessagesRef.current = onMessages;
+  }, [onMessages]);
+
   useEffect(() => {
     let unsub: (() => void) | null = null;
     setLoading(true);
@@ -134,18 +243,18 @@ export function Chat({
       .then((initial) => {
         const arr = Array.isArray(initial) ? initial : [];
         setMessages(arr);
-        onMessages?.(arr);
+        onMessagesRef.current?.(arr);
       })
       .finally(() => setLoading(false));
     unsub = provider.subscribe((msgs) => {
       const arr = Array.isArray(msgs) ? msgs : [];
       setMessages(arr);
-      onMessages?.(arr);
+      onMessagesRef.current?.(arr);
     });
     return () => {
       unsub?.();
     };
-  }, [provider, onMessages]);
+  }, [provider]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -414,87 +523,7 @@ export function Chat({
   return (
     <div>
       <div className="h-80 overflow-y-auto border border-gray-800 rounded p-3 space-y-2 text-xs bg-black/30 thin-blue-scrollbar">
-        {loading && (
-          <div className="text-gray-500 text-center mt-4 text-xs">Loading…</div>
-        )}
-        {!loading && messages.length === 0 && (
-          <div className="text-gray-500 text-center mt-8">No messages yet.</div>
-        )}
-        {messages.map((m, i) => {
-          const mine = address && m.sender === address.toLowerCase();
-          const hasAttachments = m.attachments && m.attachments.length > 0;
-          const day = dayKeyUTC(new Date(m.created_at));
-          const prev = i > 0 ? messages[i - 1] : null;
-          const prevDay = prev ? dayKeyUTC(new Date(prev.created_at)) : null;
-          return (
-            <div key={m.id}>
-              {i === 0 || day !== prevDay ? (
-                <div className="text-[10px] text-gray-500 text-center my-2 select-none">
-                  {DATE_FMT.format(new Date(m.created_at))}
-                </div>
-              ) : null}
-              <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`max-w-[70%] rounded-2xl px-3 py-2 whitespace-pre-wrap break-words shadow-sm ${
-                    mine
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-800 text-gray-100"
-                  }`}
-                >
-                  {!mine && (
-                    <div className="text-[10px] opacity-90 mb-1">
-                      <Identity addr={m.sender} resolve={resolveIdentity} />
-                    </div>
-                  )}
-                  {m.message_type === "pin" && m.linkUrl ? (
-                    <PinPreviewCard m={m} mine={!!mine} />
-                  ) : m.content ? (
-                    <div className="leading-relaxed">{m.content}</div>
-                  ) : null}
-                  {hasAttachments && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {m.attachments!.map((uri, idx) => {
-                        const gateway = uri.startsWith("ipfs://")
-                          ? `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`
-                          : uri;
-                        const linkId = `${m.id}-att-${idx}`;
-                        return (
-                          <div key={uri} className="relative">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={gateway}
-                              alt="attachment"
-                              className="h-16 w-16 object-cover rounded border border-white/10 cursor-pointer hover:opacity-90 transition"
-                              onClick={() => setPreviewImage(gateway)}
-                              onError={(e) => {
-                                const img = e.currentTarget as HTMLImageElement;
-                                img.style.display = "none";
-                                const a = document.getElementById(linkId);
-                                if (a) a.classList.remove("hidden");
-                              }}
-                            />
-                            <a
-                              id={linkId}
-                              href={gateway}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="hidden underline break-all text-[10px]"
-                            >
-                              {uri}
-                            </a>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <div className="mt-1 text-[9px] opacity-60 text-right">
-                    {TIME_FMT.format(new Date(m.created_at))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        <MessagesView items={messages} me={address} />
         <div ref={bottomRef} />
       </div>
       {canSend && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAccount } from "wagmi";
@@ -13,10 +13,9 @@ import { toGatewayUrl } from "@/lib/utils";
 export default function DirectChatPage({
   params,
 }: {
-  params: Promise<{ address: string }>;
+  params: { address: string };
 }) {
-  const resolved = use(params);
-  const other = resolved.address;
+  const other = params.address;
   const { address } = useAccount();
   const { contract } = useMarketplaceContract();
   const [mounted, setMounted] = useState(false);
