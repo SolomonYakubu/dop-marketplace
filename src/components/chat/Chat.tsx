@@ -734,7 +734,24 @@ export function Chat({
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => {
-              if (typeof onClose === "function") onClose();
+              if (typeof onClose === "function") {
+                onClose();
+                return;
+              }
+              // Fallbacks for standalone chat page
+              try {
+                if (
+                  typeof window !== "undefined" &&
+                  window.history.length > 1
+                ) {
+                  router.back();
+                } else {
+                  // Known safe route
+                  router.push("/offers");
+                }
+              } catch {
+                router.push("/offers");
+              }
             }}
             className="p-2 rounded hover:bg-white/5 text-gray-200"
             aria-label="Back"
