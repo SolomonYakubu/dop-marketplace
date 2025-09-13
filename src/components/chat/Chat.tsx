@@ -109,6 +109,11 @@ export function Chat({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinLoading, setPinLoading] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const inputWrapperRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const isCoarsePointerRef = useRef<boolean>(false);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   type PinListItem = {
     id: string;
     title: string;
@@ -260,6 +265,205 @@ export function Chat({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // Lock body scroll while the chat is open to avoid background scroll/gaps
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // Dynamic viewport sizing so the composer follows the mobile keyboard
+  useEffect(() => {
+    function updateVh() {
+      const vv: VisualViewport | undefined =
+        typeof window !== "undefined" && window.visualViewport
+          ? window.visualViewport
+          : undefined;
+      const layoutH = typeof window !== "undefined" ? window.innerHeight : 0;
+      const height = vv?.height ?? layoutH;
+      const topOffset = vv?.offsetTop ?? 0;
+      // Also include safe-area inset bottom to avoid notch overlap
+      const safeBottom =
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "env(safe-area-inset-bottom)"
+        ) || "0px";
+      if (containerRef.current) {
+        const isDesktop =
+          typeof window !== "undefined" &&
+          window.matchMedia("(min-width: 768px)").matches;
+        containerRef.current.style.setProperty("--chat-vh", `${height}px`);
+        containerRef.current.style.setProperty(
+          "--chat-h",
+          isDesktop ? "min(66vh, 700px)" : `${height}px`
+        );
+        containerRef.current.style.setProperty(
+          "--chat-safe-bottom",
+          safeBottom.trim()
+        );
+        containerRef.current.style.setProperty(
+          "--vv-top",
+          isDesktop ? "0px" : `${topOffset}px`
+        );
+      }
+    }
+    updateVh();
+    const vv: VisualViewport | undefined =
+      typeof window !== "undefined" && window.visualViewport
+        ? window.visualViewport
+        : undefined;
+    vv?.addEventListener("resize", updateVh);
+    vv?.addEventListener("scroll", updateVh);
+    window.addEventListener("resize", updateVh);
+    return () => {
+      vv?.removeEventListener("resize", updateVh);
+      vv?.removeEventListener("scroll", updateVh);
+      window.removeEventListener("resize", updateVh);
+    };
+  }, []);
+
+  // Detect coarse pointer (mobile/tablet) once
+  useEffect(() => {
+    if (typeof window !== "undefined" && "matchMedia" in window) {
+      isCoarsePointerRef.current =
+        window.matchMedia("(pointer: coarse)").matches;
+    }
+  }, []);
+
+  // Lock background page scroll while chat is open; only chat messages should scroll
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlOverscroll = html.style.getPropertyValue(
+      "overscroll-behavior"
+    );
+    const prevBodyOverscroll = body.style.getPropertyValue(
+      "overscroll-behavior"
+    );
+    const prevBodyPosition = body.style.position;
+    const prevBodyTop = body.style.top;
+    const prevBodyWidth = body.style.width;
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    html.style.setProperty("overscroll-behavior", "contain");
+    body.style.setProperty("overscroll-behavior", "contain");
+
+    // Preserve current scroll position and prevent page movement
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      if (prevHtmlOverscroll)
+        html.style.setProperty("overscroll-behavior", prevHtmlOverscroll);
+      else html.style.removeProperty("overscroll-behavior");
+      if (prevBodyOverscroll)
+        body.style.setProperty("overscroll-behavior", prevBodyOverscroll);
+      else body.style.removeProperty("overscroll-behavior");
+      body.style.position = prevBodyPosition;
+      body.style.top = prevBodyTop;
+      body.style.width = prevBodyWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
+  // Prevent scroll chaining to the page (iOS/Safari rubber-band and desktop wheel)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) return;
+      startY = e.touches[0]?.clientY ?? 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+      // If outside chat overlay, block scrolling
+      if (!container.contains(target)) {
+        e.preventDefault();
+        return;
+      }
+      const scroller =
+        (target.closest('[data-chat-scroll="1"]') as HTMLElement) ||
+        scrollerRef.current;
+      if (!scroller) {
+        // Non-scrolling parts of chat: prevent scroll so it doesn't chain to page
+        e.preventDefault();
+        return;
+      }
+      const currentY = e.touches[0]?.clientY ?? startY;
+      const dy = currentY - startY;
+      const atTop = scroller.scrollTop <= 0;
+      const atBottom =
+        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+      if ((atTop && dy > 0) || (atBottom && dy < 0)) {
+        e.preventDefault();
+      }
+    };
+    const onWheel = (e: WheelEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const target = e.target as Element | null;
+      if (!target) return;
+      if (!container.contains(target)) {
+        e.preventDefault();
+        return;
+      }
+      const scroller =
+        (target.closest('[data-chat-scroll="1"]') as HTMLElement) ||
+        scrollerRef.current ||
+        textareaRef.current;
+
+      if (!scroller) {
+        e.preventDefault();
+        return;
+      }
+      const delta = e.deltaY;
+      const atTop = scroller.scrollTop <= 0;
+      const atBottom =
+        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+      if ((atTop && delta < 0) || (atBottom && delta > 0)) {
+        e.preventDefault();
+      }
+    };
+    const addOptsPassiveTrue: AddEventListenerOptions = {
+      passive: true,
+      capture: true,
+    };
+    const addOptsPassiveFalse: AddEventListenerOptions = {
+      passive: false,
+      capture: true,
+    };
+    document.addEventListener("touchstart", onTouchStart, addOptsPassiveTrue);
+    document.addEventListener("touchmove", onTouchMove, addOptsPassiveFalse);
+    document.addEventListener("wheel", onWheel, addOptsPassiveFalse);
+    return () => {
+      document.removeEventListener("touchstart", onTouchStart, true);
+      document.removeEventListener("touchmove", onTouchMove, true);
+      document.removeEventListener("wheel", onWheel, true);
+    };
+  }, []);
+
+  // Auto-resize textarea based on content
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const max = 160; // px ~ ~6 lines
+    el.style.height = Math.min(el.scrollHeight, max) + "px";
+  }, [text]);
+
   async function handleSend() {
     if (!address) return;
     const trimmed = text.trim();
@@ -272,6 +476,8 @@ export function Chat({
       setFiles([]);
     } finally {
       setSending(false);
+      // Keep keyboard open on mobile by restoring focus
+      setTimeout(() => textareaRef.current?.focus(), 0);
     }
   }
 
@@ -521,92 +727,192 @@ export function Chat({
   }
 
   return (
-    <div>
-      <div className="h-80 overflow-y-auto border border-gray-800 rounded p-3 space-y-2 text-xs bg-black/30 thin-blue-scrollbar">
-        <MessagesView items={messages} me={address} />
-        <div ref={bottomRef} />
-      </div>
-      {canSend && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="mt-3 space-y-2"
-        >
-          <div className="flex gap-2 items-end">
-            <div className="flex-1 flex items-center gap-1 rounded border border-gray-800 bg-gray-900/60 px-2">
-              <input
-                type="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={placeholder}
-                className="flex-1 bg-transparent outline-none py-2 text-sm"
-                maxLength={4000}
-              />
-              <input
-                id="chat-file-input"
-                type="file"
-                multiple
-                onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                className="hidden"
-                accept="image/*"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  document.getElementById("chat-file-input")?.click()
-                }
-                className="text-gray-400 hover:text-white p-1"
-                aria-label="Attach images"
-              >
-                <Paperclip className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={openPinModal}
-                className="text-gray-400 hover:text-white p-1"
-                aria-label="Pin listing"
-              >
-                <PinIcon className="w-4 h-4" />
-              </button>
-              <button
-                type="submit"
-                disabled={sending || (!text.trim() && files.length === 0)}
-                className="text-blue-400 hover:text-blue-300 disabled:opacity-50 p-1"
-                aria-label="Send message"
-              >
-                {sending ? (
-                  <RefreshCcw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <SendIcon className="w-4 h-4" />
-                )}
-              </button>
-            </div>
+    <div
+      ref={containerRef}
+      className="fixed left-0 right-0 top-0 bottom-0 md:bottom-auto md:top-1/2 md:left-1/2 md:right-auto md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(820px,calc(100vw-6rem))] md:rounded-2xl md:shadow-2xl md:border md:border-white/10 bg-black/70 backdrop-blur flex flex-col z-30 overflow-hidden overscroll-contain"
+      style={{ height: "var(--chat-h, var(--chat-vh, 100dvh))" }}
+    >
+      {/* Header */}
+      <div className="h-12 sm:h-14 flex items-center justify-between px-2 sm:px-3 border-b border-white/10 bg-black/40">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            onClick={() => {
+              // back/close behavior handled by optional onClose prop or router.back()
+              try {
+                // @ts-expect-error onClose may be injected later; fallback below
+                if (typeof onClose === "function") onClose();
+                else if (typeof window !== "undefined") history.back();
+              } catch {
+                // ignore
+              }
+            }}
+            className="p-2 rounded hover:bg-white/5 text-gray-200"
+            aria-label="Back"
+          >
+            {/* inline SVG to avoid new import churn if lucide isn't available here */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-5 h-5"
+            >
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          {/* Peer identity if available */}
+          <div className="min-w-0">
+            {/* We try to detect the peer (first sender not me) */}
+            {(() => {
+              const me = address?.toLowerCase();
+              const other = messages.find((m) =>
+                me ? m.sender !== me : true
+              )?.sender;
+              return other ? (
+                <Identity addr={other} resolve={resolveIdentity} />
+              ) : null;
+            })()}
           </div>
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
-              {files.slice(0, 4).map((f) => (
-                <span
-                  key={f.name}
-                  className="px-2 py-0.5 rounded bg-gray-800 border border-gray-700"
+        </div>
+        <div className="flex items-center gap-2 text-xs text-gray-400" />
+      </div>
+
+      {/* Messages scroll area */}
+      <div
+        ref={scrollerRef}
+        data-chat-scroll="1"
+        className="flex-1 overflow-y-auto p-3 sm:p-4 thin-blue-scrollbar overscroll-contain [padding-bottom:env(safe-area-inset-bottom)]"
+      >
+        <div className="space-y-2 text-xs">
+          <MessagesView items={messages} me={address} />
+          <div ref={bottomRef} className="h-0" />
+        </div>
+      </div>
+
+      {/* Composer */}
+      {canSend && (
+        <div
+          ref={inputWrapperRef}
+          className="border-t border-white/10 bg-black/40 px-2 sm:px-3 py-2 sm:py-3"
+          style={{ paddingBottom: "calc(0px + var(--chat-safe-bottom, 0px))" }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+          >
+            <div className="flex gap-2 items-end py-2">
+              <div className="flex-1 flex items-center gap-1 rounded-xl border border-gray-800 bg-gray-900/70 px-2">
+                <textarea
+                  ref={textareaRef}
+                  data-chat-scroll="1"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  onFocus={() =>
+                    inputWrapperRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "end",
+                    })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const isCoarse = isCoarsePointerRef.current;
+                    if (!isCoarse && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                    // On mobile (coarse) or Shift+Enter, allow newline
+                  }}
+                  placeholder={placeholder}
+                  rows={1}
+                  className="flex-1 bg-transparent outline-none py-2 text-sm resize-none max-h-40 leading-relaxed"
+                  maxLength={4000}
+                  inputMode="text"
+                  autoCapitalize="sentences"
+                  autoCorrect="on"
+                  spellCheck
+                  // Use a neutral hint; we handle Enter behavior ourselves
+                  enterKeyHint="done"
+                />
+                <input
+                  id="chat-file-input"
+                  type="file"
+                  multiple
+                  onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                  className="hidden"
+                  accept="image/*"
+                />
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onTouchStart={(e) => e.preventDefault()}
+                  onClick={() =>
+                    document.getElementById("chat-file-input")?.click()
+                  }
+                  className="text-gray-400 hover:text-white p-1"
+                  aria-label="Attach images"
                 >
-                  {f.name.slice(0, 12)}
-                </span>
-              ))}
-              {files.length > 4 && (
-                <span className="text-gray-500">+{files.length - 4} more</span>
-              )}
-              <button
-                type="button"
-                onClick={() => setFiles([])}
-                className="px-2 py-0.5 rounded border border-gray-700 hover:bg-gray-800"
-              >
-                Clear
-              </button>
+                  <Paperclip className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onTouchStart={(e) => e.preventDefault()}
+                  onClick={openPinModal}
+                  className="text-gray-400 hover:text-white p-1"
+                  aria-label="Pin listing"
+                >
+                  <PinIcon className="w-4 h-4" />
+                </button>
+                <button
+                  type="submit"
+                  disabled={sending || (!text.trim() && files.length === 0)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onTouchStart={(e) => e.preventDefault()}
+                  className="text-blue-400 hover:text-blue-300 disabled:opacity-50 p-1"
+                  aria-label="Send message"
+                >
+                  {sending ? (
+                    <RefreshCcw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <SendIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
-          )}
-        </form>
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
+                {files.slice(0, 4).map((f) => (
+                  <span
+                    key={f.name}
+                    className="px-2 py-0.5 rounded bg-gray-800 border border-gray-700"
+                  >
+                    {f.name.slice(0, 12)}
+                  </span>
+                ))}
+                {files.length > 4 && (
+                  <span className="text-gray-500">
+                    +{files.length - 4} more
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setFiles([])}
+                  className="px-2 py-0.5 rounded border border-gray-700 hover:bg-gray-800"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </form>
+        </div>
       )}
 
       {previewImage && (
