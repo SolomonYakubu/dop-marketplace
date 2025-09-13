@@ -9,6 +9,8 @@ import logo from "../../public/logo.jpeg";
 import { TOKENS } from "@/lib/contract";
 import { ethers } from "ethers";
 import { formatTokenAmountWithSymbol, type KnownTokens } from "@/lib/utils";
+import { MessageCircle } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
 export function Header() {
   const { address } = useAccount();
   const [profileDropdown, setProfileDropdown] = useState(false);
@@ -75,6 +77,34 @@ export function Header() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Unread indicator: naive poll recent direct chats for activity in last 10 minutes
+  const [hasUnread, setHasUnread] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    async function check() {
+      try {
+        if (!address) {
+          setHasUnread(false);
+          return;
+        }
+        const me = address.toLowerCase();
+        const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data } = await supabase
+          .from("direct_chats")
+          .select("user_lo,user_hi,updated_at")
+          .or(`user_lo.eq.${me},user_hi.eq.${me}`)
+          .gt("updated_at", since)
+          .limit(1);
+        setHasUnread(!!(data && data.length > 0));
+      } catch {}
+    }
+    check();
+    timer = setInterval(check, 15000);
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [address]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -228,6 +258,17 @@ export function Header() {
 
           {/* Right controls (mobile + desktop) */}
           <div className="flex items-center gap-2 md:gap-4">
+            <Link
+              href="/chat"
+              className="relative inline-flex items-center justify-center rounded-md p-2 text-gray-300 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-white/20"
+              aria-label="Open chat"
+              title="Messages"
+            >
+              <MessageCircle className="h-5 w-5" />
+              {hasUnread && (
+                <span className="absolute -top-0.5 -right-0.5 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 ring-2 ring-black" />
+              )}
+            </Link>
             {/* Token balance selector (desktop) */}
             <div className="hidden md:block relative" ref={tokenDropdownRef}>
               <button

@@ -729,14 +729,22 @@ export default function PublicProfilePage({
               <p className="text-[11px] text-gray-400">
                 Wallet {formatAddress(resolvedParams.address)}
               </p>
-              <Link
-                href={`/create?prefill=brief&to=${encodeURIComponent(
-                  resolvedParams.address
-                )}`}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500/90 hover:bg-indigo-500 transition-colors px-4 py-2 text-xs font-medium text-white"
-              >
-                Request Quote
-              </Link>
+              <div className="flex gap-2">
+                <Link
+                  href={`/chat/${encodeURIComponent(resolvedParams.address)}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600/90 hover:bg-blue-600 transition-colors px-4 py-2 text-xs font-medium text-white"
+                >
+                  Message
+                </Link>
+                <Link
+                  href={`/create?prefill=brief&to=${encodeURIComponent(
+                    resolvedParams.address
+                  )}`}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500/90 hover:bg-indigo-500 transition-colors px-4 py-2 text-xs font-medium text-white"
+                >
+                  Request Quote
+                </Link>
+              </div>
             </div>
           </aside>
         </div>
