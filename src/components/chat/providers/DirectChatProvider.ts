@@ -107,7 +107,7 @@ export class DirectChatProvider implements ChatDataProvider {
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = setInterval(() => {
       void this.fetchLatest(onChange);
-    }, 6000);
+    }, 2000);
   }
 
   async send(

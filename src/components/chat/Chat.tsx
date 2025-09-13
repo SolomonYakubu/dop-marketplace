@@ -16,6 +16,22 @@ import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { ListingType, type Listing } from "@/types/marketplace";
 import { CreateListingForm } from "@/components/create/CreateListingForm";
 
+// Hydration-safe, timezone-stable formatters (use UTC so SSR/CSR match)
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+const TIME_FMT = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false, // stable 24h output across locales
+  timeZone: "UTC",
+});
+const dayKeyUTC = (d: Date) => d.toISOString().slice(0, 10); // YYYY-MM-DD
+
 // Lightweight identity cache contract: caller passes a resolver
 export type IdentityResolver = (address: string) =>
   | {
@@ -407,21 +423,14 @@ export function Chat({
         {messages.map((m, i) => {
           const mine = address && m.sender === address.toLowerCase();
           const hasAttachments = m.attachments && m.attachments.length > 0;
-          const day = new Date(m.created_at).toDateString();
+          const day = dayKeyUTC(new Date(m.created_at));
           const prev = i > 0 ? messages[i - 1] : null;
-          const prevDay = prev
-            ? new Date(prev.created_at).toDateString()
-            : null;
+          const prevDay = prev ? dayKeyUTC(new Date(prev.created_at)) : null;
           return (
             <div key={m.id}>
               {i === 0 || day !== prevDay ? (
                 <div className="text-[10px] text-gray-500 text-center my-2 select-none">
-                  {new Date(m.created_at).toLocaleDateString(undefined, {
-                    weekday: "short",
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  })}
+                  {DATE_FMT.format(new Date(m.created_at))}
                 </div>
               ) : null}
               <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -479,10 +488,7 @@ export function Chat({
                     </div>
                   )}
                   <div className="mt-1 text-[9px] opacity-60 text-right">
-                    {new Date(m.created_at).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {TIME_FMT.format(new Date(m.created_at))}
                   </div>
                 </div>
               </div>

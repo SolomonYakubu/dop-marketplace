@@ -19,14 +19,19 @@ export default function DirectChatPage({
   const other = resolved.address;
   const { address } = useAccount();
   const { contract } = useMarketplaceContract();
+  const [mounted, setMounted] = useState(false);
   const [profiles, setProfiles] = useState<
     Record<string, { username?: string; profilePicCID?: string }>
   >({});
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const provider = useMemo(() => {
-    if (!address) return null;
+    if (!mounted || !address) return null;
     return new DirectChatProvider(address, other);
-  }, [address, other]);
+  }, [mounted, address, other]);
 
   const resolveIdentity = useCallback(
     (addr: string) => profiles[addr.toLowerCase()],

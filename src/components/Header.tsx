@@ -9,7 +9,7 @@ import logo from "../../public/logo.jpeg";
 import { TOKENS } from "@/lib/contract";
 import { ethers } from "ethers";
 import { formatTokenAmountWithSymbol, type KnownTokens } from "@/lib/utils";
-import { MessageCircle } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 export function Header() {
   const { address } = useAccount();
@@ -264,7 +264,7 @@ export function Header() {
               aria-label="Open chat"
               title="Messages"
             >
-              <MessageCircle className="h-5 w-5" />
+              <MessageSquare className="h-5 w-5" />
               {hasUnread && (
                 <span className="absolute -top-0.5 -right-0.5 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 ring-2 ring-black" />
               )}
