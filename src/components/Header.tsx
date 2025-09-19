@@ -178,6 +178,12 @@ export function Header() {
               Browse
             </Link>
             <Link
+              href="/freelancers"
+              className="text-gray-300 hover:text-white transition-colors"
+            >
+              Freelancers
+            </Link>
+            <Link
               href="/briefs"
               className="text-gray-300 hover:text-white transition-colors"
             >
@@ -392,6 +398,13 @@ export function Header() {
                   onClick={() => setMobileOpen(false)}
                 >
                   Browse
+                </Link>
+                <Link
+                  href="/freelancers"
+                  className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Freelancers
                 </Link>
                 <Link
                   href="/briefs"
