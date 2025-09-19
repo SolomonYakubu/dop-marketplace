@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi"; 
+import { useAccount } from "wagmi";
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { useToastContext } from "@/components/providers";
 import Link from "next/link";
@@ -232,6 +232,10 @@ export default function AdminPage() {
   const [verifyAddress, setVerifyAddress] = useState<string>("");
   const [disputeOfferId, setDisputeOfferId] = useState<string>("");
   const [disputeOutcome, setDisputeOutcome] = useState<string>("2"); // default SPLIT
+  // Badges form
+  const [badgeTarget, setBadgeTarget] = useState<string>("");
+  const [badgeKey, setBadgeKey] = useState<string>("STAR");
+  const [badgeBusy, setBadgeBusy] = useState<"grant" | "revoke" | null>(null);
 
   const [confirm, setConfirm] = useState<{
     open: boolean;
@@ -369,6 +373,63 @@ export default function AdminPage() {
     };
   }, [contract, toast]);
 
+  const SPECIAL_BADGES = useMemo(
+    () => [
+      { key: "STAR", value: 6, label: "Star" },
+      { key: "MVP", value: 7, label: "MVP" },
+      { key: "AMBASSADOR", value: 8, label: "Ambassador" },
+    ],
+    []
+  );
+
+  const handleGrantBadge = async () => {
+    if (!contract || !badgeTarget) return;
+    if (!requireOwner()) return;
+    try {
+      setBadgeBusy("grant");
+      const badgeNum = Number(
+        SPECIAL_BADGES.find((b) => b.key === badgeKey)?.value ?? 6
+      );
+      await contract.grantBadge(badgeTarget.trim(), badgeNum);
+      toast.showSuccess(
+        "Badge granted",
+        `Granted ${badgeKey} to ${badgeTarget}`
+      );
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && "message" in e
+          ? (e as { message?: string }).message
+          : undefined;
+      toast.showError("Grant failed", msg || String(e));
+    } finally {
+      setBadgeBusy(null);
+    }
+  };
+
+  const handleRevokeBadge = async () => {
+    if (!contract || !badgeTarget) return;
+    if (!requireOwner()) return;
+    try {
+      setBadgeBusy("revoke");
+      const badgeNum = Number(
+        SPECIAL_BADGES.find((b) => b.key === badgeKey)?.value ?? 6
+      );
+      await contract.revokeBadge(badgeTarget.trim(), badgeNum);
+      toast.showSuccess(
+        "Badge revoked",
+        `Revoked ${badgeKey} from ${badgeTarget}`
+      );
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && "message" in e
+          ? (e as { message?: string }).message
+          : undefined;
+      toast.showError("Revoke failed", msg || String(e));
+    } finally {
+      setBadgeBusy(null);
+    }
+  };
+
   const requireOwner = () => {
     if (!isOwner) {
       toast.showError("Not authorized", "Connect as contract owner");
@@ -495,7 +556,10 @@ export default function AdminPage() {
     if (!contract) return;
     const price = (() => {
       try {
-        return ethers.parseUnits((profileBoostPriceDop || "0").trim() || "0", 18);
+        return ethers.parseUnits(
+          (profileBoostPriceDop || "0").trim() || "0",
+          18
+        );
       } catch {
         return BigInt(0);
       }
@@ -803,9 +867,7 @@ export default function AdminPage() {
       "Resolve dispute",
       <div>
         <p>Offer ID: {offerId.toString()}</p>
-        <p>
-          Outcome: {outcome} (1=REFUND_CLIENT, 2=SPLIT, 3=PAY_PROVIDER)
-        </p>
+        <p>Outcome: {outcome} (1=REFUND_CLIENT, 2=SPLIT, 3=PAY_PROVIDER)</p>
       </div>,
       key,
       async () => {
@@ -939,9 +1001,15 @@ export default function AdminPage() {
           <Stat
             label="Boost Price (DOP)"
             value={
-              <span className="font-mono" title={boostParams?.price?.toString()}>
+              <span
+                className="font-mono"
+                title={boostParams?.price?.toString()}
+              >
                 {boostParams?.price != null
-                  ? `${formatTokenAmount(boostParams.price, "", { decimals: 18, maxFractionDigits: 4 })} DOP`
+                  ? `${formatTokenAmount(boostParams.price, "", {
+                      decimals: 18,
+                      maxFractionDigits: 4,
+                    })} DOP`
                   : "-"}
               </span>
             }
@@ -959,9 +1027,15 @@ export default function AdminPage() {
           <Stat
             label="Profile Boost Price (DOP)"
             value={
-              <span className="font-mono" title={profileBoostParams?.price?.toString()}>
+              <span
+                className="font-mono"
+                title={profileBoostParams?.price?.toString()}
+              >
                 {profileBoostParams?.price != null
-                  ? `${formatTokenAmount(profileBoostParams.price, "", { decimals: 18, maxFractionDigits: 4 })} DOP`
+                  ? `${formatTokenAmount(profileBoostParams.price, "", {
+                      decimals: 18,
+                      maxFractionDigits: 4,
+                    })} DOP`
                   : "-"}
               </span>
             }
@@ -1231,6 +1305,51 @@ export default function AdminPage() {
                 </span>
               </button>
             </div>
+
+            {/* Special badges */}
+            <div className="rounded-md border border-white/10 p-4">
+              <div className="font-medium mb-2">Special Badges</div>
+              <label className="block text-xs text-gray-400 mb-1">
+                User address
+              </label>
+              <input
+                value={badgeTarget}
+                onChange={(e) => setBadgeTarget(e.target.value)}
+                className="w-full rounded bg-black/40 border border-white/10 px-3 py-2 mb-3 font-mono"
+                placeholder="0x..."
+              />
+              <label className="block text-xs text-gray-400 mb-1">Badge</label>
+              <select
+                value={badgeKey}
+                onChange={(e) => setBadgeKey(e.target.value)}
+                className="w-full rounded bg-black/40 border border-white/10 px-3 py-2 mb-3"
+              >
+                {SPECIAL_BADGES.map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={!isOwner || badgeBusy === "grant"}
+                  onClick={handleGrantBadge}
+                  className="rounded-md bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {badgeBusy === "grant" ? "Granting..." : "Grant badge"}
+                </button>
+                <button
+                  disabled={!isOwner || badgeBusy === "revoke"}
+                  onClick={handleRevokeBadge}
+                  className="rounded-md bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {badgeBusy === "revoke" ? "Revoking..." : "Revoke"}
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Admin-only. User must have created a profile.
+              </p>
+            </div>
           </div>
         </section>
       )}
@@ -1360,34 +1479,35 @@ export default function AdminPage() {
                             </>
                           )}
                         </button>
-                        {disputeStatuses[key] === ESCROW_STATUS.DISPUTED && isOwner && (
-                          <div className="hidden sm:flex items-center gap-1">
-                            <button
-                              onClick={() => handleResolveInline(id, 1)}
-                              disabled={isLoading(`resolve:${key}:1`)}
-                              className="rounded-md bg-red-600/80 hover:bg-red-600 text-white px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
-                              title="Refund client"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" /> Refund
-                            </button>
-                            <button
-                              onClick={() => handleResolveInline(id, 2)}
-                              disabled={isLoading(`resolve:${key}:2`)}
-                              className="rounded-md bg-yellow-600/80 hover:bg-yellow-600 text-black px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
-                              title="Split funds"
-                            >
-                              <Scale className="h-3.5 w-3.5" /> Split
-                            </button>
-                            <button
-                              onClick={() => handleResolveInline(id, 3)}
-                              disabled={isLoading(`resolve:${key}:3`)}
-                              className="rounded-md bg-emerald-600/80 hover:bg-emerald-600 text-white px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
-                              title="Pay provider"
-                            >
-                              <Gavel className="h-3.5 w-3.5" /> Pay
-                            </button>
-                          </div>
-                        )}
+                        {disputeStatuses[key] === ESCROW_STATUS.DISPUTED &&
+                          isOwner && (
+                            <div className="hidden sm:flex items-center gap-1">
+                              <button
+                                onClick={() => handleResolveInline(id, 1)}
+                                disabled={isLoading(`resolve:${key}:1`)}
+                                className="rounded-md bg-red-600/80 hover:bg-red-600 text-white px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
+                                title="Refund client"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" /> Refund
+                              </button>
+                              <button
+                                onClick={() => handleResolveInline(id, 2)}
+                                disabled={isLoading(`resolve:${key}:2`)}
+                                className="rounded-md bg-yellow-600/80 hover:bg-yellow-600 text-black px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
+                                title="Split funds"
+                              >
+                                <Scale className="h-3.5 w-3.5" /> Split
+                              </button>
+                              <button
+                                onClick={() => handleResolveInline(id, 3)}
+                                disabled={isLoading(`resolve:${key}:3`)}
+                                className="rounded-md bg-emerald-600/80 hover:bg-emerald-600 text-white px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
+                                title="Pay provider"
+                              >
+                                <Gavel className="h-3.5 w-3.5" /> Pay
+                              </button>
+                            </div>
+                          )}
                         <Link
                           href={`/offers/${key}`}
                           className="text-xs text-gray-300 hover:text-white underline inline-flex items-center gap-1.5"
@@ -1642,7 +1762,13 @@ function EscrowSummary({
       return `${formatTokenAmount(v, data.token, {
         tokens,
         maxFractionDigits: 4,
-      })} ${data.token?.toLowerCase() === (tokens?.USDC || "").toLowerCase() ? "USDC" : data.token?.toLowerCase() === (tokens?.DOP || "").toLowerCase() ? "DOP" : ""}`.trim();
+      })} ${
+        data.token?.toLowerCase() === (tokens?.USDC || "").toLowerCase()
+          ? "USDC"
+          : data.token?.toLowerCase() === (tokens?.DOP || "").toLowerCase()
+          ? "DOP"
+          : ""
+      }`.trim();
     } catch {
       return data.amount;
     }

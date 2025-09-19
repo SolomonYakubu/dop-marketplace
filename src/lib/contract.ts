@@ -11,6 +11,7 @@ import {
   DisputeOutcome,
 } from "@/types/marketplace";
 import MarketplaceABI from "./abi/abi.json";
+import { Badge as BadgeEnum } from "@/types/marketplace";
 
 export const TOKENS = {
   2741: {
@@ -989,8 +990,21 @@ export class MarketplaceContract {
     const cached = !opts?.force ? this.cacheGet<Badge[]>(key) : undefined;
     if (cached) return cached;
     const res = await this.contract.getUserBadges(user);
-    this.cacheSet(key, res, opts?.ttlMs ?? 60_000);
-    return res as Badge[];
+    const normalized: number[] = Array.isArray(res)
+      ? res.map((x: unknown) => {
+          try {
+            // Coerce bigint/hex/number to number
+            if (typeof x === "bigint") return Number(x);
+            if (typeof x === "number") return x;
+            if (typeof x === "string") return Number(x);
+            return Number((x as { toString: () => string }).toString());
+          } catch {
+            return Number(x as number);
+          }
+        })
+      : [];
+    this.cacheSet(key, normalized as unknown as Badge[], opts?.ttlMs ?? 60_000);
+    return normalized as unknown as Badge[];
   }
 
   async getAverageRating(user: string, opts?: CacheOptions): Promise<number> {
@@ -1509,6 +1523,49 @@ export class MarketplaceContract {
     const receipt = await tx.wait();
     this.invalidateCache(["fees"]);
     return receipt;
+  }
+
+  // Badges: grant/revoke (owner only)
+  async grantBadge(user: string, badge: BadgeEnum) {
+    if (!this.signer) throw new Error("Signer required for write operations");
+    const tx = await this.contract.grantBadge(user, badge);
+    const receipt = await tx.wait();
+    this.invalidateCache([this.cacheKey(["badges", user.toLowerCase()])]);
+    return receipt;
+  }
+
+  async revokeBadge(user: string, badge: BadgeEnum) {
+    if (!this.signer) throw new Error("Signer required for write operations");
+    const tx = await this.contract.revokeBadge(user, badge);
+    const receipt = await tx.wait();
+    this.invalidateCache([this.cacheKey(["badges", user.toLowerCase()])]);
+    return receipt;
+  }
+
+  // Optional: user-friendly label for badges
+  static badgeLabel(b: BadgeEnum): string {
+    switch (b) {
+      case BadgeEnum.ROOKIE:
+        return "Rookie";
+      case BadgeEnum.EXPERIENCED:
+        return "Experienced";
+      case BadgeEnum.EXPERT:
+        return "Expert";
+      case BadgeEnum.MASTER:
+        return "Master";
+      case BadgeEnum.RELIABLE:
+        return "Reliable";
+      case BadgeEnum.MEDIATOR:
+        return "Mediator";
+      case BadgeEnum.STAR:
+        return "Star";
+      case BadgeEnum.MVP:
+        return "MVP";
+      case BadgeEnum.AMBASSADOR:
+        return "Ambassador";
+      default:
+        return `#${Number(b)}`;
+    }
   }
 
   async setBoostParams(price: bigint, duration: bigint) {

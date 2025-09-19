@@ -399,22 +399,24 @@ export function getBadgeLabel(badge: Badge) {
   switch (badge) {
     case Badge.ROOKIE:
       return "Rookie";
-    case Badge.RELIABLE:
-      return "Reliable";
+    case Badge.EXPERIENCED:
+      return "Experienced";
     case Badge.EXPERT:
       return "Expert";
     case Badge.MASTER:
       return "Master";
-    case Badge.LEGEND:
-      return "Legend";
-    case Badge.DISPUTE_RESOLVER:
-      return "Dispute Resolver";
-    case Badge.HIGH_EARNER:
-      return "High Earner";
-    case Badge.PROLIFIC:
-      return "Prolific";
+    case Badge.RELIABLE:
+      return "Reliable";
+    case Badge.MEDIATOR:
+      return "Mediator";
+    case Badge.STAR:
+      return "Star";
+    case Badge.MVP:
+      return "MVP";
+    case Badge.AMBASSADOR:
+      return "Ambassador";
     default:
-      return "Unknown Badge";
+      return "Badge";
   }
 }
 

@@ -129,6 +129,25 @@
     "inputs": [
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "enum MarketplaceUpgradeable.Badge",
+        "name": "badge",
+        "type": "uint8"
+      }
+    ],
+    "name": "BadgeRevoked",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "uint256",
         "name": "id",
         "type": "uint256"
@@ -1848,6 +1867,24 @@
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "enum MarketplaceUpgradeable.Badge",
+        "name": "badge",
+        "type": "uint8"
+      }
+    ],
+    "name": "grantBadge",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "",
         "type": "uint256"
@@ -2431,6 +2468,24 @@
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      },
+      {
+        "internalType": "enum MarketplaceUpgradeable.Badge",
+        "name": "badge",
+        "type": "uint8"
+      }
+    ],
+    "name": "revokeBadge",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {

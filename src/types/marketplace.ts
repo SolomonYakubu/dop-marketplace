@@ -37,15 +37,18 @@ export enum DisputeOutcome {
   SPLIT = 3,
 }
 
+// Mirrors Solidity enum MarketplaceUpgradeable.Badge order
 export enum Badge {
-  ROOKIE = 1,
-  RELIABLE = 2,
-  EXPERT = 3,
-  MASTER = 4,
-  LEGEND = 5,
-  DISPUTE_RESOLVER = 6,
-  HIGH_EARNER = 7,
-  PROLIFIC = 8,
+  ROOKIE = 0,
+  EXPERIENCED = 1,
+  EXPERT = 2,
+  MASTER = 3,
+  RELIABLE = 4,
+  MEDIATOR = 5,
+  // Admin-assignable specials
+  STAR = 6,
+  MVP = 7,
+  AMBASSADOR = 8,
 }
 
 export interface Listing {

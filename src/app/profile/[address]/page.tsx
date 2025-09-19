@@ -21,6 +21,7 @@ import {
   ProfileMetadata,
   UserType,
 } from "@/types/marketplace";
+import { getBadgeLabel } from "@/lib/utils";
 import {
   toGatewayUrl,
   formatAddress,
@@ -307,7 +308,8 @@ export default function PublicProfilePage({
         } catch {}
         try {
           const b = await contract!.getUserBadges(user);
-          setBadges(b);
+          const norm = Array.isArray(b) ? b.map((x) => Number(x)) : [];
+          setBadges(norm as unknown as Badge[]);
         } catch {}
         // Seed edit form with loaded profile (owner only prefill)
         try {
@@ -754,7 +756,7 @@ export default function PublicProfilePage({
                             key={i}
                             className="px-2 py-0.5 rounded-full bg-yellow-600/30 text-yellow-200 text-[10px] tracking-wide"
                           >
-                            {Badge[badge] || "NONE"}
+                            {getBadgeLabel(badge)}
                           </span>
                         ))}
                         {badges.length > 12 && (
