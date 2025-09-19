@@ -234,18 +234,31 @@ export default function BrowsePage() {
 
     // Sort listings
     filtered.sort((a, b) => {
+      // Always show boosted first
+      if (a.isBoosted && !b.isBoosted) return -1;
+      if (!a.isBoosted && b.isBoosted) return 1;
+
+      // Secondary: user-selected sort
       switch (sortBy) {
+        case "oldest": {
+          const diff = Number(a.createdAt) - Number(b.createdAt);
+          if (diff !== 0) return diff;
+          break;
+        }
         case "newest":
-          return Number(b.createdAt) - Number(a.createdAt);
-        case "oldest":
-          return Number(a.createdAt) - Number(b.createdAt);
         case "boosted":
-          if (a.isBoosted && !b.isBoosted) return -1;
-          if (!a.isBoosted && b.isBoosted) return 1;
-          return Number(b.createdAt) - Number(a.createdAt);
-        default:
-          return 0;
+        default: {
+          const diff = Number(b.createdAt) - Number(a.createdAt);
+          if (diff !== 0) return diff;
+          break;
+        }
       }
+
+      // Tertiary: deterministic tiebreaker by id (desc)
+      try {
+        if (a.id !== b.id) return a.id > b.id ? -1 : 1;
+      } catch {}
+      return 0;
     });
 
     setFilteredListings(filtered);

@@ -81,6 +81,15 @@ type GigUIState = Listing & {
 
 type ReviewWithTimestamp = Review & { timestamp?: bigint | number | string };
 
+// Minimal ERC20 for allowance/approve
+interface Erc20 {
+  allowance(owner: string, spender: string): Promise<bigint>;
+  approve(
+    spender: string,
+    amount: bigint
+  ): Promise<{ wait?: () => Promise<unknown> } & object>;
+}
+
 export default function GigDetailsPage({
   params,
 }: {
@@ -138,6 +147,12 @@ export default function GigDetailsPage({
 
   const chainId = chain?.id ?? 11124;
   const tokenAddresses = useMemo(() => getTokenAddresses(chainId), [chainId]);
+
+  // Dynamic boost pricing state (listing-level)
+  const [boostPrice, setBoostPrice] = useState<bigint | null>(null);
+  const [boostDurationDays, setBoostDurationDays] = useState<number | null>(
+    null
+  );
 
   // Normalize profile skills to avoid undefined access
   const profileSkills = useMemo(
@@ -418,6 +433,17 @@ export default function GigDetailsPage({
 
         setProfile(creatorProfile);
         setProfileMetadata(creatorProfileMeta);
+
+        // Fetch dynamic listing boost price & duration
+        try {
+          const price = await contract!.currentListingBoostPrice();
+          setBoostPrice(price);
+        } catch {}
+        try {
+          const params = await contract!.getBoostParams();
+          const days = Math.round(Number(params.duration ?? 0) / 86400);
+          setBoostDurationDays(days);
+        } catch {}
 
         // After listing is set, load current user's offer for this gig
         if (address) {
@@ -748,6 +774,34 @@ export default function GigDetailsPage({
         </div>
       </SectionCard>
     );
+  };
+
+  const handleBoostListing = async () => {
+    if (!address || !state || !isOwner) return;
+    if (!boostPrice || boostPrice <= BigInt(0)) return;
+    try {
+      const dop = tokenAddresses.DOP || (await contract!.getDopToken());
+      if (!dop) throw new Error("DOP token address not configured");
+      const erc20 = contract!.getErc20(dop) as unknown as Erc20;
+      const owner = address;
+      const spender = contract!.contractAddress;
+      const current = await erc20.allowance(owner, spender);
+      if (current < boostPrice) {
+        const tx0 = await erc20.approve(spender, boostPrice);
+        await tx0.wait?.();
+      }
+      const receipt = await contract!.buyBoost(state.id, boostPrice);
+      await receipt;
+      // refresh UI
+      setState((s) => (s ? { ...s, isBoosted: true } : s));
+      try {
+        const price = await contract!.currentListingBoostPrice({ force: true });
+        setBoostPrice(price);
+      } catch {}
+      toast.showSuccess("Listing boosted");
+    } catch (e) {
+      toast.showContractError("Boost failed", e);
+    }
   };
 
   const renderBookingForm = () => {
@@ -1169,6 +1223,43 @@ export default function GigDetailsPage({
                 </div>
               )}
             </SectionCard>
+
+            {isOwner && (
+              <SectionCard
+                title="Boost Listing"
+                icon={<Sparkles className="w-4 h-4" />}
+              >
+                <div className="space-y-2 text-xs text-gray-400">
+                  <InfoRow
+                    label="Current price"
+                    value={
+                      boostPrice != null
+                        ? `${ethers.formatUnits(
+                            boostPrice,
+                            knownDecimalsFor(
+                              tokenAddresses.DOP || ethers.ZeroAddress,
+                              tokenAddresses
+                            ) ?? 18
+                          )} DOP`
+                        : "-"
+                    }
+                  />
+                  <InfoRow
+                    label="Duration"
+                    value={
+                      boostDurationDays != null ? `${boostDurationDays} d` : "-"
+                    }
+                  />
+                  <button
+                    onClick={handleBoostListing}
+                    disabled={!boostPrice}
+                    className="w-full mt-2 px-4 py-2 bg-yellow-500 text-black rounded hover:bg-yellow-400 disabled:opacity-50"
+                  >
+                    Boost Now
+                  </button>
+                </div>
+              </SectionCard>
+            )}
 
             {/* Your Offer (for current wallet) */}
             {address && myOffer && (

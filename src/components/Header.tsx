@@ -202,58 +202,15 @@ export function Header() {
               Create
             </Link>
 
-            {/* Profile Dropdown */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setProfileDropdown(!profileDropdown)}
-                className="text-gray-300 hover:text-white transition-colors flex items-center gap-1"
+            {address && (
+              <Link
+                href={`/profile/${address}`}
+                className="text-gray-300 hover:text-white transition-colors"
+                onClick={() => setProfileDropdown(false)}
               >
                 Profile
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-
-              {profileDropdown && (
-                <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-gray-800 rounded-md shadow-lg z-50">
-                  <div className="py-1">
-                    <Link
-                      href="/profile/comprehensive"
-                      className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
-                      onClick={() => setProfileDropdown(false)}
-                    >
-                      My Profile
-                    </Link>
-                    {address && (
-                      <Link
-                        href={`/profile/${address}`}
-                        className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
-                        onClick={() => setProfileDropdown(false)}
-                      >
-                        Public Profile
-                      </Link>
-                    )}
-                    <Link
-                      href="/profile"
-                      className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
-                      onClick={() => setProfileDropdown(false)}
-                    >
-                      Edit Profile
-                    </Link>
-                  </div>
-                </div>
-              )}
-            </div>
+              </Link>
+            )}
           </nav>
 
           {/* Right controls (mobile + desktop) */}
@@ -467,38 +424,15 @@ export function Header() {
 
                 {/* Divider */}
                 <div className="my-2 h-px bg-gray-800" />
-
-                {/* Profile links on mobile */}
-                <div>
-                  <p className="px-3 pb-1 text-xs uppercase tracking-wider text-gray-500">
+                {mounted && address && (
+                  <Link
+                    href={`/profile/${address}`}
+                    className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"
+                    onClick={() => setProfileDropdown(false)}
+                  >
                     Profile
-                  </p>
-                  <div className="flex flex-col gap-2">
-                    <Link
-                      href="/profile/comprehensive"
-                      className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      My Profile
-                    </Link>
-                    {mounted && address && (
-                      <Link
-                        href={`/profile/${address}`}
-                        className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"
-                        onClick={() => setMobileOpen(false)}
-                      >
-                        Public Profile
-                      </Link>
-                    )}
-                    <Link
-                      href="/profile"
-                      className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      Edit Profile
-                    </Link>
-                  </div>
-                </div>
+                  </Link>
+                )}
               </div>
             </div>
           </div>

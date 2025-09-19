@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect, useMemo, useState } from "react";
+import {
+  use,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  ChangeEvent,
+} from "react";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { getTokenAddresses } from "@/lib/contract";
@@ -12,6 +19,7 @@ import {
   Mission,
   Badge,
   ProfileMetadata,
+  UserType,
 } from "@/types/marketplace";
 import {
   toGatewayUrl,
@@ -29,13 +37,14 @@ import {
   UserCircle2,
   BadgeCheck,
   Star,
-  Award,
   Target,
   History,
   Rocket,
   Briefcase,
   MessageSquareQuote,
   Link as LinkIcon,
+  Loader2,
+  X as XIcon,
 } from "lucide-react";
 
 // Minimal ERC-20 interface
@@ -101,8 +110,33 @@ export default function PublicProfilePage({
     price: bigint;
     duration: bigint;
   } | null>(null);
+  const [dynamicProfilePrice, setDynamicProfilePrice] = useState<bigint | null>(
+    null
+  );
   const [dopToken, setDopToken] = useState("");
   const [dopDecimals, setDopDecimals] = useState(18);
+  const [listingBoostPrice, setListingBoostPrice] = useState<bigint | null>(
+    null
+  );
+  const [listingBoostDurationDays, setListingBoostDurationDays] = useState<
+    number | null
+  >(null);
+  const [boostingListingId, setBoostingListingId] = useState<bigint | null>(
+    null
+  );
+  // Edit panel state (unified)
+  const [editOpen, setEditOpen] = useState(false);
+  const [bio, setBio] = useState("");
+  const [skills, setSkills] = useState("");
+  const [portfolioUri, setPortfolioUri] = useState("");
+  const [userType, setUserType] = useState<UserType>(UserType.DEVELOPER);
+  const [username, setUsername] = useState("");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [saving, setSaving] = useState(false);
+  // Modal mount helper to prevent SSR mismatch on portal-like UI
+  const [mounted, setMounted] = useState(false);
 
   const profileSkills = useMemo(
     () => (Array.isArray(profile?.skills) ? (profile!.skills as string[]) : []),
@@ -275,6 +309,33 @@ export default function PublicProfilePage({
           const b = await contract!.getUserBadges(user);
           setBadges(b);
         } catch {}
+        // Seed edit form with loaded profile (owner only prefill)
+        try {
+          if (p) {
+            setBio(p.bio || "");
+            setSkills(
+              Array.isArray(p.skills) ? (p.skills as string[]).join(", ") : ""
+            );
+            setPortfolioUri(p.portfolioURIs?.[0] || "");
+            const ut = (p as unknown as { userType?: UserType }).userType;
+            setUserType(ut ?? UserType.DEVELOPER);
+            setUsername(p.username || "");
+            if (p.profilePicCID) {
+              const gw = toGatewayUrl(p.profilePicCID) || p.profilePicCID;
+              setAvatarPreview(gw);
+            } else {
+              setAvatarPreview("");
+            }
+          } else {
+            // No profile yet
+            setBio("");
+            setSkills("");
+            setPortfolioUri("");
+            setUserType(UserType.DEVELOPER);
+            setUsername("");
+            setAvatarPreview("");
+          }
+        } catch {}
         try {
           const userListings = await contract!.getListingsByCreator(
             user,
@@ -289,6 +350,22 @@ export default function PublicProfilePage({
         try {
           const params = await contract!.getProfileBoostParams();
           setBoostParams(params);
+          // Fetch dynamic price (can change as others boost)
+          try {
+            const dyn = await contract!.currentProfileBoostPrice();
+            setDynamicProfilePrice(dyn);
+          } catch {}
+          // Listing boost dynamic price and duration for UI
+          try {
+            const p = await contract!.currentListingBoostPrice();
+            setListingBoostPrice(p);
+          } catch {}
+          try {
+            const lp = await contract!.getBoostParams();
+            setListingBoostDurationDays(
+              Math.round(Number(lp.duration ?? 0) / 86400)
+            );
+          } catch {}
           let dop = tokenAddresses.DOP;
           if (!dop) {
             try {
@@ -318,13 +395,36 @@ export default function PublicProfilePage({
     })();
   }, [chainId, contract, provider, resolvedParams.address, tokenAddresses.DOP]);
 
+  // Mark mounted for modal rendering safety
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Auto-open edit for new owners without profile/username
+  useEffect(() => {
+    if (loading) return;
+    if (!isOwner) return;
+    const noProfile = !profile;
+    const zeroJoin =
+      profile?.joinedAt === undefined || profile?.joinedAt === BigInt(0);
+    const emptyCore =
+      !profile?.username &&
+      !profile?.bio &&
+      (!Array.isArray(profile?.skills) ||
+        (profile?.skills as string[]).length === 0);
+    if (noProfile || zeroJoin || emptyCore) {
+      setEditOpen(true);
+    }
+  }, [loading, isOwner, profile]);
+
   async function handleBuyBoost() {
     if (!isOwner) {
       toast.showError("Not allowed", "You can only boost your own profile.");
       return;
     }
-    if (!boostParams?.price) {
-      toast.showError("Unavailable", "Boost parameters not available.");
+    const toPay = dynamicProfilePrice ?? boostParams?.price;
+    if (!toPay) {
+      toast.showError("Unavailable", "Boost price not available.");
       return;
     }
     const result = await execute(async () => {
@@ -339,16 +439,56 @@ export default function PublicProfilePage({
       const owner = address!;
       const spender = contract!.contractAddress;
       const current: bigint = await erc20.allowance(owner, spender);
-      if (current < boostParams.price) {
-        const tx = await erc20.approve(spender, boostParams.price);
+      if (current < toPay) {
+        const tx = await erc20.approve(spender, toPay);
         await tx.wait?.();
       }
-      await contract!.buyProfileBoost(boostParams.price);
+      await contract!.buyProfileBoost(toPay);
     });
     if (result !== null) {
       toast.showSuccess("Profile Boosted", "Your profile boost is now active.");
       setIsBoosted(true);
+      // refresh dynamic price cache for UI
+      try {
+        const dyn = await contract!.currentProfileBoostPrice({ force: true });
+        setDynamicProfilePrice(dyn);
+      } catch {}
     }
+  }
+
+  async function boostListing(listingId: bigint) {
+    if (!isOwner) {
+      toast.showError("Not allowed", "You can only boost your own listing.");
+      return;
+    }
+    if (!listingBoostPrice || listingBoostPrice <= BigInt(0)) {
+      toast.showError("Unavailable", "Boost price not available.");
+      return;
+    }
+    await execute(async () => {
+      setBoostingListingId(listingId);
+      try {
+        let dop = dopToken;
+        if (!dop) dop = await contract!.getDopToken();
+        if (!dop) throw new Error("DOP token address is not configured");
+        const erc20 = contract!.getErc20(dop) as unknown as Erc20;
+        const owner = address!;
+        const spender = contract!.contractAddress;
+        const current: bigint = await erc20.allowance(owner, spender);
+        if (current < listingBoostPrice) {
+          const tx0 = await erc20.approve(spender, listingBoostPrice);
+          await tx0.wait?.();
+        }
+        await contract!.buyBoost(listingId, listingBoostPrice);
+        toast.showSuccess("Listing boosted");
+        try {
+          const p = await contract!.currentListingBoostPrice({ force: true });
+          setListingBoostPrice(p);
+        } catch {}
+      } finally {
+        setBoostingListingId(null);
+      }
+    });
   }
 
   const disputes = useMemo(
@@ -363,16 +503,122 @@ export default function PublicProfilePage({
     [missions, disputes]
   );
   const skillCount = profileSkills.length;
+  const editSkillCount = useMemo(
+    () => skills.split(",").filter((s) => s.trim()).length,
+    [skills]
+  );
+  const bioRemaining = 600 - bio.length;
+
+  function onAvatarChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] || null;
+    setAvatarFile(file);
+    if (file) setAvatarPreview(URL.createObjectURL(file));
+  }
+
+  const handleAvatarUploadIfNeeded = useCallback(async (): Promise<
+    string | undefined
+  > => {
+    if (!avatarFile) return profile?.profilePicCID;
+    try {
+      setUploadingAvatar(true);
+      const form = new FormData();
+      form.append("file", avatarFile);
+      form.append("type", "avatar");
+      const res = await fetch("/api/ipfs", { method: "POST", body: form });
+      if (!res.ok) throw new Error("Upload failed");
+      const json = await res.json();
+      const cid = json.cid || json.Hash || json.CID;
+      if (!cid) throw new Error("CID missing in response");
+      return `ipfs://${cid}`;
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, [avatarFile, profile?.profilePicCID]);
+
+  const saveProfile = useCallback(async () => {
+    if (!address) {
+      toast.showError("Connect Wallet", "Connect your wallet");
+      return;
+    }
+    try {
+      setSaving(true);
+      const skillsArr = skills
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const avatarCid = await handleAvatarUploadIfNeeded();
+      if (profile && profile.joinedAt && profile.joinedAt !== BigInt(0)) {
+        await contract!.updateProfile(
+          bio,
+          skillsArr,
+          portfolioUri ? portfolioUri : "",
+          avatarCid
+        );
+        // Optional username update
+        if (username && username !== (profile.username || "")) {
+          try {
+            type UsernameCapable = {
+              setUsername?: (u: string) => Promise<unknown>;
+            };
+            const underlying: UsernameCapable | undefined = (
+              contract as unknown as { contract?: UsernameCapable }
+            ).contract;
+            if (underlying?.setUsername) await underlying.setUsername(username);
+          } catch (err) {
+            console.warn("Username update failed", err);
+          }
+        }
+      } else {
+        if (!username.trim())
+          throw new Error("Username required for new profile");
+        await contract!.createProfile(
+          bio,
+          skillsArr,
+          portfolioUri ? portfolioUri : "",
+          userType,
+          username,
+          avatarCid || ""
+        );
+      }
+      toast.showSuccess("Success", "Profile saved successfully!");
+      // Refresh view
+      try {
+        const refreshed = (await contract!.getProfile(
+          address
+        )) as unknown as OnchainUserProfile;
+        if (refreshed) setProfile(refreshed);
+      } catch {}
+      setEditOpen(false);
+    } catch (e: unknown) {
+      toast.showContractError?.("Error", e, "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    address,
+    bio,
+    contract,
+    portfolioUri,
+    profile,
+    skills,
+    toast,
+    userType,
+    username,
+    handleAvatarUploadIfNeeded,
+  ]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8">
-      <div className="flex items-center gap-3 text-xs text-gray-500">
-        <Link
-          href="/gigs"
-          className="inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-gray-800/60 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back
-        </Link>
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/gigs"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md hover:bg-gray-800/60 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Back
+          </Link>
+        </div>
+        {/* Removed top-right Edit; actions moved to header card */}
       </div>
       {loading ? (
         <div className="space-y-6 animate-pulse">
@@ -390,7 +636,7 @@ export default function PublicProfilePage({
         <div className="grid lg:grid-cols-3 gap-8 items-start">
           <div className="lg:col-span-2 space-y-8">
             <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
-              <div className="flex items-start gap-4">
+              <div className="flex flex-col sm:flex-row items-start gap-4">
                 {profile?.profilePicCID ? (
                   <Image
                     src={
@@ -421,55 +667,107 @@ export default function PublicProfilePage({
                   </div>
                 )}
                 <div className="flex-1 min-w-0 space-y-2">
-                  <h1 className="text-2xl font-semibold tracking-tight flex flex-wrap items-center gap-3">
-                    <span className="truncate max-w-[260px]">
-                      {profile?.username
-                        ? `@${profile.username}`
-                        : profileMeta?.name ||
-                          formatAddress(resolvedParams.address)}
-                    </span>
-                    {profile?.isVerified && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 text-[11px] inline-flex items-center gap-1">
-                        <BadgeCheck className="w-3.5 h-3.5" />
-                        Verified
-                      </span>
-                    )}
-                    {isBoosted && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] inline-flex items-center gap-1">
-                        <Rocket className="w-3.5 h-3.5" />
-                        Boosted
-                      </span>
-                    )}
-                  </h1>
-                  {profile?.username && profileMeta?.name && (
-                    <p className="text-xs text-gray-500 truncate max-w-[280px]">
-                      {profileMeta.name}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
-                    <span className="px-2 py-0.5 rounded-full bg-gray-800/70">
-                      {skillCount} skills
-                    </span>
-                    {avgRating !== null && (
-                      <span className="px-2 py-0.5 rounded-full bg-gray-800/70 inline-flex items-center gap-1 text-yellow-300">
-                        <Star className="w-3 h-3" />
-                        {avgRating.toFixed(2)}
-                      </span>
-                    )}
-                    {profile?.portfolioURIs &&
-                      profile.portfolioURIs.length > 0 && (
-                        <Link
-                          href={
-                            toGatewayUrl(profile.portfolioURIs[0]) ||
-                            profile.portfolioURIs[0]
-                          }
-                          target="_blank"
-                          className="px-2 py-0.5 rounded-full bg-gray-800/70 inline-flex items-center gap-1 hover:text-white"
-                        >
-                          <LinkIcon className="w-3 h-3" />
-                          Portfolio
-                        </Link>
+                  <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap w-full">
+                    <div className="min-w-0 space-y-1 flex-1">
+                      <h1 className="text-2xl font-semibold tracking-tight flex flex-wrap items-center gap-3">
+                        <span className="truncate max-w-[260px]">
+                          {profile?.username
+                            ? `@${profile.username}`
+                            : profileMeta?.name ||
+                              formatAddress(resolvedParams.address)}
+                        </span>
+                        {profile?.isVerified && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-600/20 text-emerald-300 text-[11px] inline-flex items-center gap-1">
+                            <BadgeCheck className="w-3.5 h-3.5" />
+                            Verified
+                          </span>
+                        )}
+                        {isBoosted && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] inline-flex items-center gap-1">
+                            <Rocket className="w-3.5 h-3.5" />
+                            Boosted
+                          </span>
+                        )}
+                      </h1>
+                      {profile?.username && profileMeta?.name && (
+                        <p className="text-xs text-gray-500 truncate max-w-[280px]">
+                          {profileMeta.name}
+                        </p>
                       )}
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+                        <span className="px-2 py-0.5 rounded-full bg-gray-800/70">
+                          {skillCount} skills
+                        </span>
+                        {avgRating !== null && (
+                          <span className="px-2 py-0.5 rounded-full bg-gray-800/70 inline-flex items-center gap-1 text-yellow-300">
+                            <Star className="w-3 h-3" />
+                            {avgRating.toFixed(2)}
+                          </span>
+                        )}
+                        {profile?.portfolioURIs &&
+                          profile.portfolioURIs.length > 0 && (
+                            <Link
+                              href={
+                                toGatewayUrl(profile.portfolioURIs[0]) ||
+                                profile.portfolioURIs[0]
+                              }
+                              target="_blank"
+                              className="px-2 py-0.5 rounded-full bg-gray-800/70 inline-flex items-center gap-1 hover:text-white"
+                            >
+                              <LinkIcon className="w-3 h-3" />
+                              Portfolio
+                            </Link>
+                          )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:flex sm:items-center gap-2 w-full sm:w-auto sm:justify-end">
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setEditOpen(true)}
+                          className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-gray-900/60 hover:bg-gray-900 text-gray-200 px-3 py-2 text-xs w-fit md:w-full sm:w-auto"
+                        >
+                          Edit Profile
+                        </button>
+                      )}
+
+                      <Link
+                        href={`/chat/${encodeURIComponent(
+                          resolvedParams.address
+                        )}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600/90 hover:bg-blue-600 transition-colors px-3 py-2 text-xs font-medium text-white w-fit md:w-full sm:w-auto"
+                      >
+                        <MessageSquareQuote className="w-3.5 h-3.5" />
+                        Message
+                      </Link>
+                    </div>
+                  </div>
+                  {/* Badges row under profile with label */}
+                  <div className="mt-3 space-y-1">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-400">
+                      Badges
+                    </div>
+                    {badges.length > 0 ? (
+                      <div className="-mx-1 sm:mx-0 overflow-x-auto sm:overflow-visible whitespace-nowrap sm:whitespace-normal flex sm:flex-wrap items-center gap-1 px-1">
+                        {badges.slice(0, 12).map((badge, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 rounded-full bg-yellow-600/30 text-yellow-200 text-[10px] tracking-wide"
+                          >
+                            {Badge[badge] || "NONE"}
+                          </span>
+                        ))}
+                        {badges.length > 12 && (
+                          <span className="text-[10px] text-gray-500">
+                            +{badges.length - 12}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-500">
+                        No badges yet.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -494,6 +792,27 @@ export default function PublicProfilePage({
                     </span>
                   )}
                 </div>
+              )}
+              {isOwner && (
+                <LoadingButton
+                  onClick={handleBuyBoost}
+                  loading={boosting}
+                  disabled={!boostParams || boosting}
+                  className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-amber-400/90 hover:bg-amber-400 text-black px-3 py-2 text-xs font-medium w-full sm:w-auto"
+                >
+                  {boosting
+                    ? "Boosting…"
+                    : dynamicProfilePrice ?? boostParams?.price
+                    ? `Boost • ${formatTokenAmountWithSymbol(
+                        (dynamicProfilePrice ?? boostParams!.price) as bigint,
+                        dopToken || tokenAddresses.DOP || ethers.ZeroAddress,
+                        {
+                          tokens: tokenAddresses,
+                          decimals: dopDecimals,
+                        }
+                      )}`
+                    : "Boost"}
+                </LoadingButton>
               )}
             </div>
             <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
@@ -535,6 +854,43 @@ export default function PublicProfilePage({
                           <p className="text-[11px] text-gray-500">
                             Created {timeAgo(Number(item.listing.createdAt))}
                           </p>
+                          {isOwner && (
+                            <div className="pt-2">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  boostListing(item.listing.id);
+                                }}
+                                disabled={
+                                  !listingBoostPrice ||
+                                  boostingListingId === item.listing.id
+                                }
+                                className="inline-flex items-center gap-2 rounded border border-white/10 bg-yellow-500 text-black text-[11px] px-2.5 py-1 hover:bg-yellow-400 disabled:opacity-50"
+                              >
+                                {boostingListingId === item.listing.id
+                                  ? "Boosting…"
+                                  : listingBoostPrice
+                                  ? `Boost • ${formatTokenAmountWithSymbol(
+                                      listingBoostPrice,
+                                      dopToken ||
+                                        tokenAddresses.DOP ||
+                                        ethers.ZeroAddress,
+                                      {
+                                        tokens: tokenAddresses,
+                                        decimals: dopDecimals,
+                                      }
+                                    )}`
+                                  : "Boost"}
+                              </button>
+                              {listingBoostDurationDays != null && (
+                                <span className="ml-2 text-[10px] text-gray-500">
+                                  {listingBoostDurationDays} d
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </Link>
                     ))}
@@ -551,6 +907,98 @@ export default function PublicProfilePage({
                     </div>
                   )}
                 </>
+              )}
+            </div>
+            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  <History className="w-4 h-4" /> Recent Missions
+                </div>
+                {missions.length > 0 && (
+                  <span className="text-[11px] text-gray-500">
+                    {Math.min(5, missions.length)}/{missions.length}
+                  </span>
+                )}
+              </div>
+              {missions.length === 0 ? (
+                <p className="text-xs text-gray-500">
+                  No missions completed yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {missions
+                    .slice()
+                    .sort(
+                      (a, b) => Number(b.completedAt) - Number(a.completedAt)
+                    )
+                    .slice(0, 5)
+                    .map((m, i) => {
+                      const isUSDC =
+                        tokenAddresses.USDC &&
+                        m.token.toLowerCase() ===
+                          tokenAddresses.USDC.toLowerCase();
+                      const isDOP =
+                        tokenAddresses.DOP &&
+                        m.token.toLowerCase() ===
+                          tokenAddresses.DOP.toLowerCase();
+                      const decimals = isUSDC ? 6 : dopDecimals;
+                      const symbol = isUSDC ? "USDC" : isDOP ? "DOP" : "TOKEN";
+                      const amt = (() => {
+                        try {
+                          return ethers.formatUnits(m.amount, decimals);
+                        } catch {
+                          return m.amount.toString();
+                        }
+                      })();
+                      const me = resolvedParams.address?.toLowerCase();
+                      const counterparty =
+                        me && m.client?.toLowerCase() === me
+                          ? m.provider
+                          : m.client;
+                      return (
+                        <div
+                          key={i}
+                          className="rounded-lg border border-white/10 bg-gray-950/50 p-4 text-xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-gray-300">
+                              <span className="font-medium">
+                                Escrow #{m.escrowId.toString()}
+                              </span>
+                              {m.wasDisputed && (
+                                <span className="px-1.5 py-0.5 rounded bg-red-600/20 text-red-300 text-[10px]">
+                                  Disputed
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-gray-500">
+                              {timeAgo(Number(m.completedAt))}
+                            </div>
+                          </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-3 text-gray-400">
+                            <span className="inline-flex items-baseline gap-1">
+                              <span className="text-gray-300 font-medium">
+                                {amt}
+                              </span>
+                              <span>{symbol}</span>
+                            </span>
+                            <span className="text-gray-600">•</span>
+                            <span className="inline-flex items-center gap-1">
+                              with
+                              <Link
+                                href={`/profile/${encodeURIComponent(
+                                  counterparty
+                                )}`}
+                                className="text-gray-200 hover:underline"
+                              >
+                                {formatAddress(counterparty)}
+                              </Link>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               )}
             </div>
             <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-6 space-y-5">
@@ -612,6 +1060,7 @@ export default function PublicProfilePage({
             </div>
           </div>
           <aside className="space-y-6">
+            {/* Edit Profile aside card removed; edit now opens in a modal */}
             <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 <Target className="w-4 h-4" /> Mission Stats
@@ -657,74 +1106,7 @@ export default function PublicProfilePage({
                 </div>
               )}
             </div>
-            <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                <Award className="w-4 h-4" /> Badges
-              </div>
-              {badges.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {badges.map((badge, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded-full bg-yellow-600/30 text-yellow-200 text-[10px] tracking-wide"
-                    >
-                      {Badge[badge] || "NONE"}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] text-gray-500">No badges yet.</p>
-              )}
-            </div>
-            {isOwner && (
-              <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                  <Rocket className="w-4 h-4" /> Boost Profile
-                </div>
-                {boostParams ? (
-                  <div className="text-[11px] space-y-1 text-gray-400">
-                    <div>
-                      Price{" "}
-                      <span className="text-gray-200 font-medium">
-                        {boostParams.price
-                          ? formatTokenAmountWithSymbol(
-                              boostParams.price,
-                              dopToken ||
-                                tokenAddresses.DOP ||
-                                ethers.ZeroAddress,
-                              { tokens: tokenAddresses, decimals: dopDecimals }
-                            )
-                          : "-"}
-                      </span>
-                    </div>
-                    <div>
-                      Duration{" "}
-                      <span className="text-gray-200 font-medium">
-                        {boostParams.duration
-                          ? Math.round(Number(boostParams.duration) / 86400)
-                          : 0}{" "}
-                        d
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-gray-500">
-                    Loading parameters…
-                  </p>
-                )}
-                <LoadingButton
-                  onClick={handleBuyBoost}
-                  loading={boosting}
-                  disabled={!boostParams || boosting}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-white text-black px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-40"
-                >
-                  {boosting ? "Processing…" : "Buy Boost"}
-                </LoadingButton>
-                <p className="text-[10px] text-gray-500 leading-relaxed">
-                  Boost increases profile visibility for the duration.
-                </p>
-              </div>
-            )}
+            {/* Badges and Boost Profile aside cards removed; included in header actions */}
             <div className="rounded-xl border border-white/10 bg-gradient-to-b from-gray-900/70 to-gray-900/40 p-5 space-y-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 <UserCircle2 className="w-4 h-4" /> Contact
@@ -733,12 +1115,7 @@ export default function PublicProfilePage({
                 Wallet {formatAddress(resolvedParams.address)}
               </p>
               <div className="flex gap-2">
-                <Link
-                  href={`/chat/${encodeURIComponent(resolvedParams.address)}`}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600/90 hover:bg-blue-600 transition-colors px-4 py-2 text-xs font-medium text-white"
-                >
-                  Message
-                </Link>
+                {/* Message button moved to header; keep Request Quote here */}
                 <Link
                   href={`/create?prefill=brief&to=${encodeURIComponent(
                     resolvedParams.address
@@ -750,6 +1127,185 @@ export default function PublicProfilePage({
               </div>
             </div>
           </aside>
+        </div>
+      )}
+      {/* Edit Profile Modal */}
+      {mounted && editOpen && isOwner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setEditOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-xl border border-white/10 bg-gray-950/90 backdrop-blur p-4 sm:p-5 shadow-2xl">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <UserCircle2 className="w-4 h-4" /> Edit Profile
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="inline-flex items-center justify-center rounded-md p-1 text-gray-400 hover:text-white hover:bg-white/10"
+                aria-label="Close"
+              >
+                <XIcon className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4 text-xs">
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-400">User Type</label>
+                <select
+                  value={userType}
+                  onChange={(e) =>
+                    setUserType(Number(e.target.value) as UserType)
+                  }
+                  disabled={
+                    !!profile?.joinedAt && profile.joinedAt !== BigInt(0)
+                  }
+                  className="w-full rounded-md border border-white/10 bg-gray-950/70 px-2 py-1.5 text-xs"
+                >
+                  <option value={UserType.PROJECT_OWNER}>Project Owner</option>
+                  <option value={UserType.DEVELOPER}>Developer</option>
+                  <option value={UserType.ARTIST}>Artist</option>
+                  <option value={UserType.KOL}>KOL</option>
+                </select>
+                {!!profile?.joinedAt && profile.joinedAt !== BigInt(0) && (
+                  <p className="text-[10px] text-gray-500">
+                    User type is permanent after creation.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-400 flex items-center justify-between">
+                  Username{" "}
+                  <span className="text-[10px] text-gray-500">Changeable</span>
+                </label>
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                  placeholder="unique handle (3-32 chars)"
+                  maxLength={32}
+                  className="w-full rounded-md border border-white/10 bg-gray-950/70 px-2 py-1.5 text-xs"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-400 flex items-center justify-between">
+                  Bio{" "}
+                  <span className="text-[10px] text-gray-500">
+                    {bioRemaining}
+                  </span>
+                </label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  maxLength={600}
+                  rows={4}
+                  className="w-full rounded-md border border-white/10 bg-gray-950/70 px-2 py-1.5 text-xs resize-none"
+                  placeholder="Tell people what you do, experience, interests…"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-400">
+                  Skills (comma separated)
+                </label>
+                <input
+                  value={skills}
+                  onChange={(e) => setSkills(e.target.value)}
+                  placeholder="React, TypeScript, Solidity, Web3…"
+                  className="w-full rounded-md border border-white/10 bg-gray-950/70 px-2 py-1.5 text-xs"
+                />
+                {editSkillCount > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-1">
+                    {skills
+                      .split(",")
+                      .filter((s) => s.trim())
+                      .slice(0, 8)
+                      .map((s, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded-full bg-gray-800/60 text-[10px] text-gray-300"
+                        >
+                          {s.trim()}
+                        </span>
+                      ))}
+                    {editSkillCount > 8 && (
+                      <span className="text-[10px] text-gray-400">
+                        +{editSkillCount - 8}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-400">
+                  Portfolio (URL / IPFS)
+                </label>
+                <input
+                  value={portfolioUri}
+                  onChange={(e) => setPortfolioUri(e.target.value)}
+                  placeholder="https:// or ipfs://"
+                  className="w-full rounded-md border border-white/10 bg-gray-950/70 px-2 py-1.5 text-xs"
+                />
+                {portfolioUri && (
+                  <p className="text-[10px] text-gray-500 break-all flex items-center gap-1">
+                    <LinkIcon className="w-3 h-3" />
+                    {portfolioUri}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-400 flex items-center gap-2">
+                  Avatar{" "}
+                  {uploadingAvatar && (
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> uploading
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={onAvatarChange}
+                  className="w-full text-[11px] file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-[11px] file:font-semibold file:bg-white file:text-black hover:file:opacity-90"
+                />
+                {avatarPreview && (
+                  <div className="relative h-16 w-16 rounded-lg overflow-hidden border border-white/10">
+                    <Image
+                      src={avatarPreview}
+                      alt="avatar preview"
+                      width={64}
+                      height={64}
+                      className="object-cover w-16 h-16"
+                    />
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-500">
+                  PNG/JPG, &lt;2MB recommended.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditOpen(false)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-gray-900/60 hover:bg-gray-900 text-gray-200 px-4 py-2 text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveProfile}
+                  disabled={
+                    saving || uploadingAvatar || (!profile && !username.trim())
+                  }
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-white text-black px-4 py-2 text-xs font-medium hover:opacity-90 disabled:opacity-40"
+                >
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {saving
+                    ? "Saving…"
+                    : profile?.joinedAt && profile.joinedAt !== BigInt(0)
+                    ? "Update Profile"
+                    : "Create Profile"}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -93,6 +93,19 @@ export default function BriefDetailsPage({
   const [offerAmount, setOfferAmount] = useState("");
   const [paymentToken, setPaymentToken] = useState("ETH");
   const [submittingOffer, setSubmittingOffer] = useState(false);
+  const [boostPrice, setBoostPrice] = useState<bigint | null>(null);
+  const [boostDurationDays, setBoostDurationDays] = useState<number | null>(
+    null
+  );
+
+  // Minimal ERC20 interface (allowance/approve)
+  interface Erc20 {
+    allowance(owner: string, spender: string): Promise<bigint>;
+    approve(
+      spender: string,
+      amount: bigint
+    ): Promise<{ wait?: () => Promise<unknown> } & object>;
+  }
 
   const chainId =
     chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
@@ -133,6 +146,16 @@ export default function BriefDetailsPage({
         isBoosted,
         createdAgo,
       });
+      // Fetch dynamic listing boost price and duration
+      try {
+        const price = await contract!.currentListingBoostPrice();
+        setBoostPrice(price);
+      } catch {}
+      try {
+        const params = await contract!.getBoostParams();
+        const days = Math.round(Number(params.duration ?? 0) / 86400);
+        setBoostDurationDays(days);
+      } catch {}
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to load";
       setError(msg);
@@ -212,6 +235,39 @@ export default function BriefDetailsPage({
   // Simple helper to resolve decimals using known mapping; fallback to 18
   function resolveDecimals(tokenAddress: string): number {
     return knownDecimalsFor(tokenAddress, tokens) ?? 18;
+  }
+
+  async function buyListingBoost() {
+    if (!address || !state) return;
+    if (!isOwner) return;
+    if (!boostPrice || boostPrice <= BigInt(0)) return;
+    try {
+      if (!contract) throw new Error("Contract not ready");
+      const dop = tokens.DOP || (await contract.getDopToken());
+      if (!dop) throw new Error("DOP token not configured");
+      // Approve if needed
+      const erc20 = contract.getErc20(dop) as unknown as Erc20;
+      // use connected signer via contract instance
+      const owner = address;
+      const spender = contract.contractAddress;
+      const cur = await erc20.allowance(owner, spender);
+      if (cur < boostPrice) {
+        const tx0 = await erc20.approve(spender, boostPrice);
+        await tx0.wait?.();
+      }
+      const receipt = await contract.buyBoost(state.id, boostPrice);
+      await receipt;
+      toast.showSuccess("Listing boosted");
+      await loadListing();
+      // Refresh dynamic price
+      try {
+        const price = await contract.currentListingBoostPrice({ force: true });
+        setBoostPrice(price);
+      } catch {}
+    } catch (e) {
+      console.error("Boost failed:", e);
+      toast.showContractError("Boost failed", e);
+    }
   }
 
   async function submitOffer() {
@@ -801,6 +857,38 @@ export default function BriefDetailsPage({
                   >
                     View All Offers
                   </Link>
+                  <div className="pt-2 border-t border-white/10 mt-2" />
+                  <div className="space-y-1 text-[12px] text-gray-400">
+                    <div className="flex items-center justify-between">
+                      <span>Boost price</span>
+                      <span className="text-gray-200 font-medium">
+                        {boostPrice != null
+                          ? `${ethers.formatUnits(
+                              boostPrice,
+                              resolveDecimals(
+                                tokens.DOP ||
+                                  "0x0000000000000000000000000000000000000000"
+                              )
+                            )} DOP`
+                          : "-"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Duration</span>
+                      <span className="text-gray-200 font-medium">
+                        {boostDurationDays != null
+                          ? `${boostDurationDays} d`
+                          : "-"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={buyListingBoost}
+                      disabled={!boostPrice}
+                      className={`${btnBase} w-full bg-yellow-600 hover:bg-yellow-500 text-black px-4 py-2 justify-center mt-2`}
+                    >
+                      Boost Listing
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

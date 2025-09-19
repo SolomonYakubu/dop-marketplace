@@ -1275,6 +1275,45 @@ export class MarketplaceContract {
     return val;
   }
 
+  // Dynamic boost pricing views
+  async currentListingBoostPrice(opts?: CacheOptions): Promise<bigint> {
+    const key = "currentListingBoostPrice";
+    const cached = !opts?.force ? this.cacheGet<bigint>(key) : undefined;
+    if (cached !== undefined) return cached;
+    const v: bigint = await this.contract.currentListingBoostPrice();
+    this.cacheSet(key, v, opts?.ttlMs ?? 5_000);
+    return v;
+  }
+
+  async currentProfileBoostPrice(opts?: CacheOptions): Promise<bigint> {
+    const key = "currentProfileBoostPrice";
+    const cached = !opts?.force ? this.cacheGet<bigint>(key) : undefined;
+    if (cached !== undefined) return cached;
+    const v: bigint = await this.contract.currentProfileBoostPrice();
+    this.cacheSet(key, v, opts?.ttlMs ?? 5_000);
+    return v;
+  }
+
+  async activeListingBoostCount(opts?: CacheOptions): Promise<number> {
+    const key = "activeListingBoostCount";
+    const cached = !opts?.force ? this.cacheGet<number>(key) : undefined;
+    if (cached !== undefined) return cached;
+    const v: bigint = await this.contract.activeListingBoostCount();
+    const n = Number(v);
+    this.cacheSet(key, n, opts?.ttlMs ?? 5_000);
+    return n;
+  }
+
+  async activeProfileBoostCount(opts?: CacheOptions): Promise<number> {
+    const key = "activeProfileBoostCount";
+    const cached = !opts?.force ? this.cacheGet<number>(key) : undefined;
+    if (cached !== undefined) return cached;
+    const v: bigint = await this.contract.activeProfileBoostCount();
+    const n = Number(v);
+    this.cacheSet(key, n, opts?.ttlMs ?? 5_000);
+    return n;
+  }
+
   // Profile boosting
   async isProfileBoosted(user: string, opts?: CacheOptions) {
     const key = this.cacheKey(["isProfileBoosted", user.toLowerCase()]);
