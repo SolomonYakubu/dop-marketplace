@@ -208,7 +208,7 @@ export function Header() {
               Create
             </Link>
 
-            {address && (
+            {mounted && address && (
               <Link
                 href={`/profile/${address}`}
                 className="text-gray-300 hover:text-white transition-colors"
