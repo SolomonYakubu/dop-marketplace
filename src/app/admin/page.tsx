@@ -1,29 +1,85 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount } from "wagmi"; 
 import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { useToastContext } from "@/components/providers";
 import Link from "next/link";
 import { ConfirmModal } from "@/components/ConfirmModal";
-import { toGatewayUrl, fetchIpfsJson } from "@/lib/utils";
+import {
+  toGatewayUrl,
+  fetchIpfsJson,
+  formatTokenAmount,
+  type KnownTokens,
+} from "@/lib/utils";
 import Image from "next/image";
+import { ethers } from "ethers";
+import {
+  Copy,
+  Check,
+  Gavel,
+  Scale,
+  Settings,
+  ArrowLeft,
+  PiggyBank,
+  Coins,
+  CircleDollarSign,
+  Share2,
+  User as UserIcon,
+  Pause,
+  Play,
+  RefreshCw,
+  BadgeCheck,
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  RotateCcw,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 function Address({ value }: { value?: string }) {
+  const [copied, setCopied] = useState(false);
   if (!value) return <span className="text-gray-400">-</span>;
   const short = value.slice(0, 6) + "…" + value.slice(-4);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  };
   return (
-    <span className="font-mono" title={value}>
-      {short}
-    </span>
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1 font-mono text-left group hover:text-white text-gray-200"
+      title={`${value}\nClick to copy`}
+    >
+      <span>{short}</span>
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-emerald-400" />
+      ) : (
+        <Copy className="h-3.5 w-3.5 opacity-60 group-hover:opacity-100" />
+      )}
+    </button>
   );
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Stat({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: React.ReactNode;
+  icon?: LucideIcon;
+}) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-      <div className="text-xs uppercase tracking-wider text-gray-400">
-        {label}
+      <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-gray-400">
+        {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+        <span>{label}</span>
       </div>
       <div className="mt-1 text-lg">{value}</div>
     </div>
@@ -163,9 +219,9 @@ export default function AdminPage() {
   // Form state
   const [feeUsdPct, setFeeUsdPct] = useState<string>("");
   const [feeDopPct, setFeeDopPct] = useState<string>("");
-  const [boostPriceWei, setBoostPriceWei] = useState<string>("");
+  const [boostPriceDop, setBoostPriceDop] = useState<string>("");
   const [boostDurationDays, setBoostDurationDays] = useState<string>("");
-  const [profileBoostPriceWei, setProfileBoostPriceWei] = useState<string>("");
+  const [profileBoostPriceDop, setProfileBoostPriceDop] = useState<string>("");
   const [profileBoostDurationDays, setProfileBoostDurationDays] =
     useState<string>("");
   const [treasuryInput, setTreasuryInput] = useState<string>("");
@@ -240,6 +296,12 @@ export default function AdminPage() {
     return address.toLowerCase() === owner.toLowerCase();
   }, [address, owner]);
 
+  // Known token addresses for formatting
+  const knownTokens: KnownTokens = useMemo(
+    () => ({ DOP: dop ?? undefined, USDC: usdc ?? undefined }),
+    [dop, usdc]
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -275,11 +337,19 @@ export default function AdminPage() {
           setFeeDopPct((Number(f.feeDop) / 100).toString());
         }
         if (b) {
-          setBoostPriceWei(b.price.toString());
+          try {
+            setBoostPriceDop(ethers.formatUnits(b.price, 18));
+          } catch {
+            setBoostPriceDop(b.price.toString());
+          }
           setBoostDurationDays((Number(b.duration) / 86400).toString());
         }
         if (pb) {
-          setProfileBoostPriceWei(pb.price.toString());
+          try {
+            setProfileBoostPriceDop(ethers.formatUnits(pb.price, 18));
+          } catch {
+            setProfileBoostPriceDop(pb.price.toString());
+          }
           setProfileBoostDurationDays((Number(pb.duration) / 86400).toString());
         }
         if (t) setTreasuryInput(t);
@@ -389,7 +459,14 @@ export default function AdminPage() {
 
   const handleSetBoostParams = () => {
     if (!contract) return;
-    const price = BigInt(boostPriceWei || "0");
+    // Parse human DOP amount to wei
+    const price = (() => {
+      try {
+        return ethers.parseUnits((boostPriceDop || "0").trim() || "0", 18);
+      } catch {
+        return BigInt(0);
+      }
+    })();
     const duration = BigInt(
       Math.round(Number(boostDurationDays || "0") * 86400)
     );
@@ -416,7 +493,13 @@ export default function AdminPage() {
 
   const handleSetProfileBoostParams = () => {
     if (!contract) return;
-    const price = BigInt(profileBoostPriceWei || "0");
+    const price = (() => {
+      try {
+        return ethers.parseUnits((profileBoostPriceDop || "0").trim() || "0", 18);
+      } catch {
+        return BigInt(0);
+      }
+    })();
     const duration = BigInt(
       Math.round(Number(profileBoostDurationDays || "0") * 86400)
     );
@@ -712,6 +795,40 @@ export default function AdminPage() {
     }
   };
 
+  // Inline resolve helper
+  const handleResolveInline = (offerId: bigint, outcome: 1 | 2 | 3) => {
+    if (!contract) return;
+    const key = `resolve:${offerId}:${outcome}`;
+    withConfirm(
+      "Resolve dispute",
+      <div>
+        <p>Offer ID: {offerId.toString()}</p>
+        <p>
+          Outcome: {outcome} (1=REFUND_CLIENT, 2=SPLIT, 3=PAY_PROVIDER)
+        </p>
+      </div>,
+      key,
+      async () => {
+        try {
+          const receipt = await contract.resolveDispute(offerId, outcome);
+          await receipt.wait?.();
+          toast.showSuccess("Dispute resolved");
+          // Refresh status for this offer
+          try {
+            const e = await contract.getEscrow(offerId);
+            setDisputeStatuses((prev) => ({
+              ...prev,
+              [offerId.toString()]: Number(e.status),
+            }));
+          } catch {}
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          toast.showError("Failed to resolve dispute", message);
+        }
+      }
+    );
+  };
+
   return (
     <div className="space-y-8">
       <ConfirmModal
@@ -725,9 +842,14 @@ export default function AdminPage() {
       />
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Admin Panel</h1>
-        <Link href="/" className="text-sm text-gray-300 hover:text-white">
-          Back to app
+        <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <Settings className="h-5 w-5" /> Admin Panel
+        </h1>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-300 hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back to app
         </Link>
       </div>
 
@@ -746,9 +868,9 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="flex gap-2">
         {[
-          { key: "overview", label: "Overview" },
-          { key: "config", label: "Configuration" },
-          { key: "disputes", label: "Disputes" },
+          { key: "overview", label: "Overview", icon: Settings },
+          { key: "config", label: "Configuration", icon: PiggyBank },
+          { key: "disputes", label: "Disputes", icon: Gavel },
         ].map((t) => (
           <button
             key={t.key}
@@ -759,16 +881,24 @@ export default function AdminPage() {
                 : "bg-white/5 border-white/10 hover:bg-white/10"
             }`}
           >
-            {t.label}
+            <span className="inline-flex items-center gap-1.5">
+              {t.icon ? <t.icon className="h-4 w-4" /> : null}
+              {t.label}
+            </span>
           </button>
         ))}
       </div>
 
       {activeTab === "overview" && (
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Stat label="Owner" value={<Address value={owner ?? undefined} />} />
+          <Stat
+            label="Owner"
+            icon={UserIcon}
+            value={<Address value={owner ?? undefined} />}
+          />
           <Stat
             label="Paused"
+            icon={paused ? Pause : Play}
             value={
               <span className={paused ? "text-red-400" : "text-green-400"}>
                 {paused ? "Yes" : "No"}
@@ -777,18 +907,22 @@ export default function AdminPage() {
           />
           <Stat
             label="Treasury"
+            icon={PiggyBank}
             value={<Address value={treasury ?? undefined} />}
           />
           <Stat
             label="DOP Token"
+            icon={Coins}
             value={<Address value={dop ?? undefined} />}
           />
           <Stat
             label="USDC Token"
+            icon={CircleDollarSign}
             value={<Address value={usdc ?? undefined} />}
           />
           <Stat
             label="DEX Router"
+            icon={Share2}
             value={<Address value={router ?? undefined} />}
           />
           <Stat label="WETH" value={<Address value={weth ?? undefined} />} />
@@ -803,10 +937,12 @@ export default function AdminPage() {
             value={<span>{fees ? Number(fees.feeDop) / 100 + "%" : "-"}</span>}
           />
           <Stat
-            label="Boost Price (DOP wei)"
+            label="Boost Price (DOP)"
             value={
-              <span className="font-mono">
-                {boostParams?.price?.toString() ?? "-"}
+              <span className="font-mono" title={boostParams?.price?.toString()}>
+                {boostParams?.price != null
+                  ? `${formatTokenAmount(boostParams.price, "", { decimals: 18, maxFractionDigits: 4 })} DOP`
+                  : "-"}
               </span>
             }
           />
@@ -821,10 +957,12 @@ export default function AdminPage() {
             }
           />
           <Stat
-            label="Profile Boost Price (DOP wei)"
+            label="Profile Boost Price (DOP)"
             value={
-              <span className="font-mono">
-                {profileBoostParams?.price?.toString() ?? "-"}
+              <span className="font-mono" title={profileBoostParams?.price?.toString()}>
+                {profileBoostParams?.price != null
+                  ? `${formatTokenAmount(profileBoostParams.price, "", { decimals: 18, maxFractionDigits: 4 })} DOP`
+                  : "-"}
               </span>
             }
           />
@@ -845,7 +983,9 @@ export default function AdminPage() {
 
       {activeTab === "config" && (
         <section className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-6">
-          <h2 className="text-lg font-medium">Admin Actions</h2>
+          <h2 className="text-lg font-medium inline-flex items-center gap-2">
+            <Settings className="h-5 w-5" /> Admin Actions
+          </h2>
 
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -865,11 +1005,19 @@ export default function AdminPage() {
                   : "bg-yellow-600 hover:bg-yellow-500"
               } text-white disabled:opacity-50`}
             >
-              {isLoading("pause")
-                ? "Processing..."
-                : paused
-                ? "Unpause"
-                : "Pause"}
+              <span className="inline-flex items-center gap-2">
+                {isLoading("pause") ? (
+                  <span>Processing...</span>
+                ) : paused ? (
+                  <>
+                    <Play className="h-4 w-4" /> <span>Unpause</span>
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-4 w-4" /> <span>Pause</span>
+                  </>
+                )}
+              </span>
             </button>
           </div>
 
@@ -902,7 +1050,9 @@ export default function AdminPage() {
                 onClick={handleSetFees}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("fees") ? "Updating..." : "Update fees"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("fees") ? "Updating..." : "Update fees"}
+                </span>
               </button>
             </div>
 
@@ -910,13 +1060,14 @@ export default function AdminPage() {
             <div className="rounded-md border border-white/10 p-4">
               <div className="font-medium mb-2">Listing Boost</div>
               <label className="block text-xs text-gray-400 mb-1">
-                Price (DOP wei)
+                Price (DOP)
               </label>
               <input
-                value={boostPriceWei}
-                onChange={(e) => setBoostPriceWei(e.target.value)}
+                value={boostPriceDop}
+                onChange={(e) => setBoostPriceDop(e.target.value)}
                 className="w-full rounded bg-black/40 border border-white/10 px-3 py-2 mb-3 font-mono"
-                placeholder="1000000000000000000000"
+                placeholder="e.g. 1000"
+                inputMode="decimal"
               />
               <label className="block text-xs text-gray-400 mb-1">
                 Duration (days)
@@ -933,7 +1084,9 @@ export default function AdminPage() {
                 onClick={handleSetBoostParams}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("boost") ? "Updating..." : "Update listing boost"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("boost") ? "Updating..." : "Update listing boost"}
+                </span>
               </button>
             </div>
 
@@ -941,13 +1094,14 @@ export default function AdminPage() {
             <div className="rounded-md border border-white/10 p-4">
               <div className="font-medium mb-2">Profile Boost</div>
               <label className="block text-xs text-gray-400 mb-1">
-                Price (DOP wei)
+                Price (DOP)
               </label>
               <input
-                value={profileBoostPriceWei}
-                onChange={(e) => setProfileBoostPriceWei(e.target.value)}
+                value={profileBoostPriceDop}
+                onChange={(e) => setProfileBoostPriceDop(e.target.value)}
                 className="w-full rounded bg-black/40 border border-white/10 px-3 py-2 mb-3 font-mono"
-                placeholder="1000000000000000000000"
+                placeholder="e.g. 1000"
+                inputMode="decimal"
               />
               <label className="block text-xs text-gray-400 mb-1">
                 Duration (days)
@@ -964,7 +1118,9 @@ export default function AdminPage() {
                 onClick={handleSetProfileBoostParams}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("pboost") ? "Updating..." : "Update profile boost"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("pboost") ? "Updating..." : "Update profile boost"}
+                </span>
               </button>
             </div>
 
@@ -985,7 +1141,9 @@ export default function AdminPage() {
                 onClick={handleSetTreasury}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("treasury") ? "Updating..." : "Update treasury"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("treasury") ? "Updating..." : "Update treasury"}
+                </span>
               </button>
             </div>
 
@@ -1015,7 +1173,9 @@ export default function AdminPage() {
                 onClick={handleSetTokens}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("tokens") ? "Updating..." : "Update tokens"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("tokens") ? "Updating..." : "Update tokens"}
+                </span>
               </button>
             </div>
 
@@ -1041,7 +1201,9 @@ export default function AdminPage() {
                 onClick={handleSetRouter}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("router") ? "Updating..." : "Update router"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("router") ? "Updating..." : "Update router"}
+                </span>
               </button>
             </div>
           </div>
@@ -1064,7 +1226,9 @@ export default function AdminPage() {
                 onClick={handleVerifyProfile}
                 className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
               >
-                {isLoading("verify") ? "Verifying..." : "Verify profile"}
+                <span className="inline-flex items-center gap-2">
+                  {isLoading("verify") ? "Verifying..." : "Verify profile"}
+                </span>
               </button>
             </div>
           </div>
@@ -1103,9 +1267,15 @@ export default function AdminPage() {
                 <button
                   onClick={refreshDisputesPage}
                   disabled={pageLoading}
-                  className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+                  className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 text-sm disabled:opacity-50 inline-flex items-center gap-2"
                 >
-                  {pageLoading ? "Loading..." : "Refresh"}
+                  {pageLoading ? (
+                    <span>Loading...</span>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" /> Refresh
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -1133,13 +1303,13 @@ export default function AdminPage() {
                         <div className="font-medium flex items-center gap-2">
                           <span>Offer #{key}</span>
                           {disputeStatuses[key] === ESCROW_STATUS.RESOLVED && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-600/30 border border-green-500/40 text-green-300">
-                              Resolved
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-600/30 border border-green-500/40 text-green-300 inline-flex items-center gap-1">
+                              <BadgeCheck className="h-3 w-3" /> Resolved
                             </span>
                           )}
                           {disputeStatuses[key] === ESCROW_STATUS.DISPUTED && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-600/30 border border-yellow-500/40 text-yellow-200">
-                              Pending
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-600/30 border border-yellow-500/40 text-yellow-200 inline-flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> Pending
                             </span>
                           )}
                         </div>
@@ -1178,22 +1348,58 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => toggleExpand(id)}
-                          className="rounded-md border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10"
+                          className="rounded-md border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10 inline-flex items-center gap-1.5"
                         >
-                          {expanded[key] ? "Hide" : "Details"}
+                          {expanded[key] ? (
+                            <>
+                              <ChevronDown className="h-4 w-4" /> Hide
+                            </>
+                          ) : (
+                            <>
+                              <ChevronRight className="h-4 w-4" /> Details
+                            </>
+                          )}
                         </button>
+                        {disputeStatuses[key] === ESCROW_STATUS.DISPUTED && isOwner && (
+                          <div className="hidden sm:flex items-center gap-1">
+                            <button
+                              onClick={() => handleResolveInline(id, 1)}
+                              disabled={isLoading(`resolve:${key}:1`)}
+                              className="rounded-md bg-red-600/80 hover:bg-red-600 text-white px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
+                              title="Refund client"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" /> Refund
+                            </button>
+                            <button
+                              onClick={() => handleResolveInline(id, 2)}
+                              disabled={isLoading(`resolve:${key}:2`)}
+                              className="rounded-md bg-yellow-600/80 hover:bg-yellow-600 text-black px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
+                              title="Split funds"
+                            >
+                              <Scale className="h-3.5 w-3.5" /> Split
+                            </button>
+                            <button
+                              onClick={() => handleResolveInline(id, 3)}
+                              disabled={isLoading(`resolve:${key}:3`)}
+                              className="rounded-md bg-emerald-600/80 hover:bg-emerald-600 text-white px-2 py-1 text-xs disabled:opacity-50 inline-flex items-center gap-1"
+                              title="Pay provider"
+                            >
+                              <Gavel className="h-3.5 w-3.5" /> Pay
+                            </button>
+                          </div>
+                        )}
                         <Link
                           href={`/offers/${key}`}
-                          className="text-xs text-gray-300 hover:text-white underline"
+                          className="text-xs text-gray-300 hover:text-white underline inline-flex items-center gap-1.5"
                         >
-                          View Offer
+                          <Eye className="h-4 w-4" /> View Offer
                         </Link>
                       </div>
                     </div>
 
                     {expanded[key] && (
                       <div className="mt-3 rounded-md bg-black/30 border border-white/10 p-3">
-                        <EscrowSummary offerId={id} />
+                        <EscrowSummary offerId={id} tokens={knownTokens} />
                         <div className="mt-3">
                           <div className="font-medium mb-1">
                             Dispute Details
@@ -1379,7 +1585,7 @@ export default function AdminPage() {
             <button
               disabled={!isOwner || isLoading("resolve")}
               onClick={handleResolveDispute}
-              className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50"
+              className="rounded-md bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 text-sm disabled:opacity-50 inline-flex items-center gap-2"
             >
               {isLoading("resolve") ? "Resolving..." : "Resolve dispute"}
             </button>
@@ -1390,7 +1596,13 @@ export default function AdminPage() {
   );
 }
 
-function EscrowSummary({ offerId }: { offerId: bigint }) {
+function EscrowSummary({
+  offerId,
+  tokens,
+}: {
+  offerId: bigint;
+  tokens?: KnownTokens;
+}) {
   const { contract } = useMarketplaceContract();
   const [data, setData] = useState<{
     client: string;
@@ -1424,6 +1636,17 @@ function EscrowSummary({ offerId }: { offerId: bigint }) {
 
   if (!data)
     return <div className="text-xs text-gray-500">Loading escrow…</div>;
+  const formattedAmount = (() => {
+    try {
+      const v = BigInt(data.amount);
+      return `${formatTokenAmount(v, data.token, {
+        tokens,
+        maxFractionDigits: 4,
+      })} ${data.token?.toLowerCase() === (tokens?.USDC || "").toLowerCase() ? "USDC" : data.token?.toLowerCase() === (tokens?.DOP || "").toLowerCase() ? "DOP" : ""}`.trim();
+    } catch {
+      return data.amount;
+    }
+  })();
   return (
     <div className="rounded border border-white/10 p-2 text-xs text-gray-300">
       <div className="flex flex-wrap gap-3">
@@ -1434,7 +1657,7 @@ function EscrowSummary({ offerId }: { offerId: bigint }) {
           Provider: <Address value={data.provider} />
         </span>
         <span>
-          Amount: <span className="font-mono">{data.amount}</span>
+          Amount: <span className="font-mono">{formattedAmount}</span>
         </span>
         <span>
           Token: <Address value={data.token} />
