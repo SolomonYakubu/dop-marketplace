@@ -212,7 +212,6 @@ export function Header() {
               <Link
                 href={`/profile/${address}`}
                 className="text-gray-300 hover:text-white transition-colors"
-                onClick={() => setProfileDropdown(false)}
               >
                 Profile
               </Link>
@@ -441,7 +440,6 @@ export function Header() {
                   <Link
                     href={`/profile/${address}`}
                     className="px-3 py-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800"
-                    onClick={() => setProfileDropdown(false)}
                   >
                     Profile
                   </Link>
