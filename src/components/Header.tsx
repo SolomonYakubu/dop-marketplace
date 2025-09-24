@@ -166,7 +166,7 @@ export function Header() {
           <div className="flex items-center gap-3">
             <Image src={logo} alt="Logo" className="h-8 w-8 rounded" />
             <Link href="/" className="text-xl font-semibold text-white">
-              Death of Pengu
+              Dynasty of Penguins
             </Link>
           </div>
 
