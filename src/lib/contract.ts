@@ -1477,8 +1477,9 @@ export class MarketplaceContract {
     const key = "owner";
     const cached = !opts?.force ? this.cacheGet<string>(key) : undefined;
     if (cached) return cached;
-    const v = await this.contract.owner();
+    const v = await this.contract.getAdmins();
     this.cacheSet(key, v, opts?.ttlMs ?? 60_000);
+    console.log("Owner address fetched:", v);
     return v;
   }
 

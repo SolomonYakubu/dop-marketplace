@@ -225,7 +225,7 @@ export default function AdminPage() {
     setMounted(true);
   }, []);
 
-  const [owner, setOwner] = useState<string | null>(null);
+  const [owner, setOwner] = useState<string[]>([]);
   const [paused, setPaused] = useState<boolean>(false);
   const [treasury, setTreasury] = useState<string | null>(null);
   const [dop, setDop] = useState<string | null>(null);
@@ -244,7 +244,7 @@ export default function AdminPage() {
     price: bigint;
     duration: bigint;
   } | null>(null);
-
+  console.log("Owner state:", owner[0]);
   // Dashboard metrics
   const [metricsLoading, setMetricsLoading] = useState<boolean>(false);
   const [metrics, setMetrics] = useState<{
@@ -400,7 +400,7 @@ export default function AdminPage() {
 
   const isOwner = useMemo(() => {
     if (!address || !owner) return false;
-    return address.toLowerCase() === owner.toLowerCase();
+    return owner.some((owner) => owner.toLowerCase() === address.toLowerCase());
   }, [address, owner]);
 
   // Known token addresses for formatting
@@ -427,7 +427,9 @@ export default function AdminPage() {
           contract.getWeth().catch(() => null),
         ]);
         if (cancelled) return;
-        setOwner(o);
+        // Normalize owner to an array in case contract returns a single address
+        const owners = Array.isArray(o) ? o : o ? [o] : [];
+        setOwner(owners);
         setPaused(!!p);
         setTreasury(t);
         setDop(dopAddr);
@@ -1347,7 +1349,7 @@ export default function AdminPage() {
             <Stat
               label="Owner"
               icon={UserIcon}
-              value={<Address value={owner ?? undefined} />}
+              value={<Address value={owner[0] ?? undefined} />}
             />
             <Stat
               label="Paused"
@@ -1895,7 +1897,10 @@ export default function AdminPage() {
                               );
                             })()}
                             <span>
-                              Opened At: {new Date(Number(h.openedAt) * 1000).toUTCString()}
+                              Opened At:{" "}
+                              {new Date(
+                                Number(h.openedAt) * 1000
+                              ).toUTCString()}
                             </span>
                             {h.cid && (
                               <span>
@@ -2022,7 +2027,10 @@ export default function AdminPage() {
                                 </span>
                                 <span>opened dispute</span>
                                 <span className="opacity-70">
-                                  {new Date((h?.openedAt ? Number(h.openedAt) : 0) * 1000).toUTCString()}
+                                  {new Date(
+                                    (h?.openedAt ? Number(h.openedAt) : 0) *
+                                      1000
+                                  ).toUTCString()}
                                 </span>
                               </div>
                               <div className="mt-1 inline-block max-w-[720px] rounded-2xl rounded-tl-sm bg-white/10 border border-white/10 p-3 text-sm">
@@ -2094,7 +2102,9 @@ export default function AdminPage() {
                                     </span>
                                     <span>appealed</span>
                                     <span className="opacity-70">
-                                      {new Date(Number(a.timestamp) * 1000).toUTCString()}
+                                      {new Date(
+                                        Number(a.timestamp) * 1000
+                                      ).toUTCString()}
                                     </span>
                                   </div>
                                   <div className="mt-1 inline-block max-w-[720px] rounded-2xl rounded-tl-sm bg-white/10 border border-white/10 p-3 text-sm">
