@@ -226,6 +226,7 @@ export default function AdminPage() {
   }, []);
 
   const [owner, setOwner] = useState<string[]>([]);
+  const [ownerLoading, setOwnerLoading] = useState<boolean>(true);
   const [paused, setPaused] = useState<boolean>(false);
   const [treasury, setTreasury] = useState<string | null>(null);
   const [dop, setDop] = useState<string | null>(null);
@@ -412,7 +413,18 @@ export default function AdminPage() {
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (!contract) return;
+      if (!contract) {
+        if (!cancelled) {
+          setOwner([]);
+          setOwnerLoading(false);
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        setOwnerLoading(true);
+      }
+
       try {
         const [o, p, t, dopAddr, usdcAddr, f, b, pb, r, w] = await Promise.all([
           contract.getOwner().catch(() => null),
@@ -470,9 +482,13 @@ export default function AdminPage() {
         const message = e instanceof Error ? e.message : String(e);
         console.error(e);
         toast.showError("Failed to load admin data", message);
+      } finally {
+        if (!cancelled) {
+          setOwnerLoading(false);
+        }
       }
     }
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
@@ -1152,6 +1168,40 @@ export default function AdminPage() {
     );
   };
 
+  if (!mounted) {
+    return null;
+  }
+
+  if (!isConnected) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-200">
+          Connect your wallet to continue.
+        </div>
+      </div>
+    );
+  }
+
+  if (!contract || ownerLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-blue-200">
+          Checking admin permissions…
+        </div>
+      </div>
+    );
+  }
+
+  if (!isOwner) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-red-200">
+          You are not authorized to view this page.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <ConfirmModal
@@ -1180,18 +1230,6 @@ export default function AdminPage() {
           <ArrowLeft className="h-4 w-4" /> Back to app
         </Link>
       </div>
-
-      {mounted && !isConnected && (
-        <div className="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-yellow-200">
-          Connect your wallet to continue.
-        </div>
-      )}
-
-      {isConnected && owner && !isOwner && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-red-200">
-          You are not the contract owner. Admin actions are disabled.
-        </div>
-      )}
 
       {/* Tabs */}
       <div className="flex gap-2">
