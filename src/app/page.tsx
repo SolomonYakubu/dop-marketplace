@@ -216,7 +216,7 @@ export default function HomePage() {
                 <Link
                   href="/browse"
                   aria-label="Start exploring gigs and listings"
-                  className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 text-lg font-semibold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25"
+                  className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 text-lg font-semibold text-white transition-all hover:scale-105 hover:shadow-lg hover:shadow-purple-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 >
                   <span>Start Exploring</span>
                   <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
@@ -225,7 +225,7 @@ export default function HomePage() {
                 <Link
                   href="/create"
                   aria-label="Create a new listing"
-                  className="group inline-flex items-center gap-2 rounded-xl border border-gray-600/50 bg-gray-900/50 px-8 py-4 text-lg font-medium text-white backdrop-blur-sm transition-all hover:border-gray-500 hover:bg-gray-800/50"
+                  className="group inline-flex items-center gap-2 rounded-xl border border-gray-600/50 bg-gray-900/50 px-8 py-4 text-lg font-medium text-white backdrop-blur-sm transition-all hover:border-gray-500 hover:bg-gray-800/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                 >
                   <FileText className="h-5 w-5" />
                   <span>Create Listing</span>
@@ -246,6 +246,7 @@ export default function HomePage() {
               <h2 className="text-3xl font-bold text-white sm:text-4xl">
                 Built Different
               </h2>
+              <div className="mx-auto mt-3 h-1 w-24 rounded-full bg-gradient-to-r from-purple-500 to-pink-500" />
               <p className="mt-4 text-xl text-gray-400">
                 Three pillars that make creative work safer and more rewarding
               </p>
@@ -306,6 +307,7 @@ export default function HomePage() {
               <h2 className="text-3xl font-bold text-white sm:text-4xl">
                 How It Works
               </h2>
+              <div className="mx-auto mt-3 h-1 w-24 rounded-full bg-gradient-to-r from-purple-500 to-pink-500" />
               <p className="mt-4 text-xl text-gray-400">
                 From connection to completion in five simple steps
               </p>
@@ -361,6 +363,7 @@ export default function HomePage() {
               <h2 className="text-3xl font-bold text-white sm:text-4xl">
                 Made For Everyone
               </h2>
+              <div className="mx-auto mt-3 h-1 w-24 rounded-full bg-gradient-to-r from-purple-500 to-pink-500" />
               <p className="mt-4 text-xl text-gray-400">
                 Whether you&apos;re hiring or getting hired, we&apos;ve got you
                 covered
@@ -417,15 +420,16 @@ export default function HomePage() {
               <h2 className="text-3xl font-bold text-white sm:text-4xl">
                 Smart Economics
               </h2>
+              <div className="mx-auto mt-3 h-1 w-24 rounded-full bg-gradient-to-r from-purple-500 to-pink-500" />
               <p className="mt-4 text-xl text-gray-400">
                 Transparent fees with built-in deflationary mechanics
               </p>
             </div>
           </Reveal>
 
-          <div className="mt-16 grid gap-8 lg:grid-cols-2">
+          <div className="mt-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3 items-stretch">
             <Reveal>
-              <div className="card-tilt rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm">
+              <div className="card-tilt h-full rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm">
                 <div className="mb-6">
                   <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600">
                     <Coins className="h-6 w-6 text-white" />
@@ -448,7 +452,7 @@ export default function HomePage() {
                         ETH & Stablecoins
                       </p>
                       <p className="text-sm text-gray-400">
-                        Standard fees with automatic DOP buyback
+                        20% fee with automatic DOP buyback & burn (ETH/USDC)
                       </p>
                     </div>
                   </div>
@@ -457,7 +461,7 @@ export default function HomePage() {
                     <div>
                       <p className="font-medium text-white">DOP Token</p>
                       <p className="text-sm text-gray-400">
-                        Reduced fees with direct burn mechanism
+                        10% fee with direct burn (DOP)
                       </p>
                     </div>
                   </div>
@@ -466,7 +470,7 @@ export default function HomePage() {
             </Reveal>
 
             <Reveal delay={100}>
-              <div className="card-tilt rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm">
+              <div className="card-tilt h-full rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm">
                 <div className="mb-6">
                   <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-orange-600 to-red-600">
                     <Flame className="h-6 w-6 text-white" />
@@ -484,20 +488,61 @@ export default function HomePage() {
                 <div className="space-y-4">
                   <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 p-4">
                     <p className="font-medium text-purple-200">
-                      Standard Rate: 2.5%
+                      ETH/USDC Fee: 20%
                     </p>
                     <p className="text-sm text-gray-400">
-                      50% burned, 50% to development
+                      50% bought back and burned, 50% to treasury
                     </p>
                   </div>
                   <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-4">
-                    <p className="font-medium text-purple-200">
-                      DOP Rate: 1.5%
-                    </p>
+                    <p className="font-medium text-purple-200">DOP Fee: 10%</p>
                     <p className="text-sm text-gray-300">
-                      Direct burn with reduced fees
+                      50% burned directly, 50% to treasury
                     </p>
                   </div>
+                </div>
+              </div>
+            </Reveal>
+
+            {/* Boost Visibility */}
+            <Reveal delay={200}>
+              <div className="card-tilt h-full rounded-2xl border border-gray-800/50 bg-gray-900/30 p-8 backdrop-blur-sm flex flex-col">
+                <div className="mb-6">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600">
+                    <Zap className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+
+                <h3 className="mb-4 text-xl font-semibold text-white">
+                  Boost Visibility
+                </h3>
+                <p className="mb-4 text-gray-400">
+                  Use DOP to boost your listings and profile for 7 days. The
+                  floor price adjusts dynamically with active boosts, and you
+                  can top up during an active boost to extend time and outrank
+                  others.
+                </p>
+
+                <div className="mb-6 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1 text-xs text-fuchsia-200">
+                    7d duration
+                  </span>
+                  <span className="rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs text-purple-200">
+                    Dynamic pricing
+                  </span>
+                  <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-3 py-1 text-xs text-rose-200">
+                    50% burn • 50% treasury
+                  </span>
+                </div>
+
+                <div className="mt-auto">
+                  <Link
+                    href="/create"
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-700/60 bg-gray-800/40 px-4 py-2 text-sm font-medium text-white transition-all hover:border-purple-500/40 hover:bg-gray-800/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                  >
+                    <span>Boost a listing</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
                 </div>
               </div>
             </Reveal>
@@ -513,6 +558,7 @@ export default function HomePage() {
               <h2 className="text-3xl font-bold text-white sm:text-4xl">
                 Enterprise Security
               </h2>
+              <div className="mx-auto mt-3 h-1 w-24 rounded-full bg-gradient-to-r from-purple-500 to-pink-500" />
               <p className="mt-4 text-xl text-gray-400">
                 Bank-grade protection built into every transaction
               </p>
@@ -564,7 +610,7 @@ export default function HomePage() {
                   <Link
                     href="/create"
                     aria-label="Create a listing and start a project"
-                    className="inline-flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-lg font-semibold text-black transition-all hover:bg-gray-100"
+                    className="inline-flex items-center gap-2 rounded-xl bg-white px-8 py-4 text-lg font-semibold text-black transition-all hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     <FileText className="h-5 w-5" />
                     <span>Create Listing</span>
@@ -573,7 +619,7 @@ export default function HomePage() {
                   <Link
                     href="/browse"
                     aria-label="Explore the marketplace"
-                    className="inline-flex items-center gap-2 rounded-xl border border-gray-600/50 bg-gray-900/50 px-8 py-4 text-lg font-medium text-white backdrop-blur-sm transition-all hover:border-gray-500"
+                    className="inline-flex items-center gap-2 rounded-xl border border-gray-600/50 bg-gray-900/50 px-8 py-4 text-lg font-medium text-white backdrop-blur-sm transition-all hover:border-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                   >
                     <span>Explore Marketplace</span>
                     <ArrowRight className="h-5 w-5" />
@@ -665,8 +711,8 @@ export default function HomePage() {
         /* Reveal on scroll */
         .reveal {
           opacity: 0;
-          transform: translateY(16px) scale(0.98);
-          transition: opacity 0.6s ease, transform 0.6s ease;
+          transform: translateY(12px) scale(0.99);
+          transition: opacity 0.5s ease, transform 0.5s ease;
           will-change: opacity, transform;
         }
         .reveal.is-visible {
