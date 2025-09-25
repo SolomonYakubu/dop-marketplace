@@ -28,6 +28,9 @@ export function Header() {
   type TokenKey = "DOP" | "USDC" | "ETH";
   const [selectedToken, setSelectedToken] = useState<TokenKey>("DOP");
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false);
+  // Mobile token selector state
+  const [mobileTokenDropdownOpen, setMobileTokenDropdownOpen] = useState(false);
+  const mobileTokenDropdownRef = useRef<HTMLDivElement>(null);
 
   const tokenAddresses = (
     TOKENS as Record<number, { DOP?: string; USDC?: string }>
@@ -119,6 +122,12 @@ export function Header() {
       ) {
         setTokenDropdownOpen(false);
       }
+      if (
+        mobileTokenDropdownRef.current &&
+        !mobileTokenDropdownRef.current.contains(target)
+      ) {
+        setMobileTokenDropdownOpen(false);
+      }
       // Close mobile menu on outside click (ignore clicks on toggle button)
       if (
         mobileOpen &&
@@ -171,7 +180,7 @@ export function Header() {
               alt="Logo"
               className="h-8 w-8 rounded"
             />
-            <Link href="/" className="text-xl font-semibold text-white hidden">
+            <Link href="/" className="text-xl font-semibold text-white">
               Dynasty of Penguins
             </Link>
           </div>
@@ -226,8 +235,8 @@ export function Header() {
 
           {/* Right controls (mobile + desktop) */}
           <div className="flex items-center gap-2 md:gap-4">
-            {/* Token balance selector (desktop) */}
-            <div className=" md:block relative" ref={tokenDropdownRef}>
+            {/* Token balance selector (desktop only) */}
+            <div className="hidden md:block relative" ref={tokenDropdownRef}>
               <button
                 onClick={() => setTokenDropdownOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
@@ -393,6 +402,99 @@ export function Header() {
                     }}
                     showBalance={false}
                   />
+                </div>
+
+                {/* Mobile token balance selector */}
+                <div className="px-3" ref={mobileTokenDropdownRef}>
+                  <button
+                    onClick={() => setMobileTokenDropdownOpen((v) => !v)}
+                    disabled={!mounted || !address}
+                    className="w-full flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gradient-to-r from-gray-900/80 via-gray-900/60 to-gray-900/80 px-4 py-3 text-sm text-gray-200 shadow-sm ring-1 ring-black/40 hover:from-gray-800/80 hover:to-gray-800/80 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex flex-col text-left">
+                      <span className="text-[11px] uppercase tracking-wide text-gray-400">
+                        Token Balance
+                      </span>
+                      <span className="font-semibold text-base leading-tight">
+                        {selectedToken}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="font-mono text-xs text-gray-300">
+                        {currentBalanceFormatted()}
+                      </span>
+                      <svg
+                        className={`w-4 h-4 text-gray-400 transition-transform ${
+                          mobileTokenDropdownOpen ? "rotate-180" : ""
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                  </button>
+                  {mobileTokenDropdownOpen && (
+                    <div className="mt-2 overflow-hidden rounded-lg border border-gray-800 bg-gray-900/90 backdrop-blur-sm shadow-lg animate-in fade-in slide-in-from-top-2">
+                      <ul className="py-1">
+                        {(["DOP", "USDC", "ETH"] as TokenKey[]).map((sym) => {
+                          const disabled =
+                            (sym === "DOP" && !dopAddress) ||
+                            (sym === "USDC" && !usdcAddress);
+                          const tokenAddr =
+                            sym === "ETH"
+                              ? ethers.ZeroAddress
+                              : sym === "DOP"
+                              ? tokenAddresses.DOP
+                              : tokenAddresses.USDC;
+                          const val =
+                            sym === "ETH"
+                              ? ethBal?.value
+                              : sym === "DOP"
+                              ? dopBal?.value
+                              : usdcBal?.value;
+                          const label = disabled
+                            ? `${sym} (not set)`
+                            : val != null
+                            ? formatTokenAmountWithSymbol(
+                                val,
+                                tokenAddr || ethers.ZeroAddress,
+                                { tokens: knownTokens, maxFractionDigits: 4 }
+                              )
+                            : `${sym} — …`;
+                          return (
+                            <li key={sym}>
+                              <button
+                                className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-800/70 transition-colors ${
+                                  disabled
+                                    ? "text-gray-500 cursor-not-allowed"
+                                    : "text-gray-300"
+                                } ${
+                                  selectedToken === sym ? "bg-gray-800/40" : ""
+                                }`}
+                                disabled={disabled}
+                                onClick={() => {
+                                  setSelectedToken(sym);
+                                  setMobileTokenDropdownOpen(false);
+                                }}
+                              >
+                                <span className="font-medium">{sym}</span>
+                                <span className="font-mono text-xs">
+                                  {label}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
                 </div>
 
                 {/* Divider */}
