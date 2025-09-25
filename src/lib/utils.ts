@@ -58,7 +58,9 @@ export function toGatewayUrl(uri?: string | null): string | null {
   // If it's already http(s), return as-is
   if (/^https?:\/\//i.test(uri)) return uri;
 
-  const base = "https://ipfs.io/ipfs/";
+  const base =
+    normalizeGatewayBase(process.env.NEXT_PUBLIC_IPFS_GATEWAY) ||
+    "https://ipfs.io/ipfs/";
 
   // Handle common IPFS forms
   // ipfs://CID[/path]
@@ -137,6 +139,66 @@ export function formatTokenAmountWithSymbol(
   const value = formatTokenAmount(amount, tokenAddress, opts);
   const symbol = tokenSymbolFor(tokenAddress, opts?.tokens);
   return `${value} ${symbol}`.trim();
+}
+
+type ChainExplorerLike = {
+  blockExplorers?: {
+    default?: { url?: string | null };
+    etherscan?: { url?: string | null };
+    [key: string]: { url?: string | null } | undefined;
+  };
+};
+
+export function extractTxHash(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const maybe = value as { hash?: unknown; transactionHash?: unknown };
+  if (typeof maybe.hash === "string" && maybe.hash.startsWith("0x")) {
+    return maybe.hash;
+  }
+  if (
+    typeof maybe.transactionHash === "string" &&
+    maybe.transactionHash.startsWith("0x")
+  ) {
+    return maybe.transactionHash;
+  }
+  return undefined;
+}
+
+function getExplorerBaseUrl(
+  chainId?: number,
+  chain?: ChainExplorerLike
+): string | undefined {
+  const env = process.env as Record<string, string | undefined>;
+  if (chainId != null) {
+    const byId = env[`NEXT_PUBLIC_EXPLORER_URL_${chainId}`];
+    if (byId) return byId;
+  }
+  if (env.NEXT_PUBLIC_EXPLORER_URL) return env.NEXT_PUBLIC_EXPLORER_URL;
+  const explorers = chain?.blockExplorers;
+  const defaultUrl = explorers?.default?.url;
+  if (defaultUrl) return defaultUrl;
+  const etherscanUrl = explorers?.etherscan?.url;
+  if (etherscanUrl) return etherscanUrl;
+  if (explorers) {
+    for (const key of Object.keys(explorers)) {
+      const url = explorers[key]?.url;
+      if (url) return url;
+    }
+  }
+  return undefined;
+}
+
+export function getExplorerTxUrl(
+  txHash?: string | null,
+  opts?: { chainId?: number; chain?: ChainExplorerLike }
+): string | null {
+  if (!txHash) return null;
+  const hash = txHash.trim();
+  if (!hash) return null;
+  const base = getExplorerBaseUrl(opts?.chainId, opts?.chain);
+  if (!base) return null;
+  const normalized = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${normalized}/tx/${hash}`;
 }
 
 // ---- Shared common types and helpers ----

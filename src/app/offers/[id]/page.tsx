@@ -22,8 +22,9 @@ import {
   knownDecimalsFor,
   loadListingMetadataFromURI,
   timeAgo,
-  getRpcUrl,
   toGatewayUrl,
+  extractTxHash,
+  getExplorerTxUrl,
 } from "@/lib/utils";
 import { useToastContext } from "@/components/providers";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -128,6 +129,19 @@ export default function OfferDetailsPage({
   const [rating, setRating] = useState<number>(5);
   const [reviewText, setReviewText] = useState<string>("");
   const [leavingReview, setLeavingReview] = useState<boolean>(false);
+  const notifyReceipt = useCallback(
+    (title: string, message?: string, receipt?: unknown) => {
+      if (!receipt) {
+        toast.showSuccess(title, message);
+        return;
+      }
+      const txHash = extractTxHash(receipt);
+      const explorerUrl =
+        getExplorerTxUrl(txHash, { chainId: chain?.id, chain }) || undefined;
+      toast.showSuccess(title, message, { txHash, explorerUrl });
+    },
+    [chain, toast]
+  );
 
   // Dispute state
   const [disputeHeader, setDisputeHeader] = useState<{
@@ -234,10 +248,6 @@ export default function OfferDetailsPage({
   };
 
   const chainId = chain?.id ?? 11124;
-  const provider = useMemo(
-    () => new ethers.JsonRpcProvider(getRpcUrl(chainId)),
-    [chainId]
-  );
   const tokens = getTokenAddresses(chainId);
 
   // Derive cover image from listing metadata (IPFS/HTTP tolerant)
@@ -389,137 +399,139 @@ export default function OfferDetailsPage({
     },
     [contract, profiles]
   );
+  const loadData = useCallback(async () => {
+    if (!contract) {
+      setLoading(false);
+      setError("Marketplace contract not available");
+      return;
+    }
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const offerId = BigInt(resolvedParams.id);
+    setLoading(true);
+    setError(null);
+    try {
+      const marketplace = contract;
+      const offerId = BigInt(resolvedParams.id);
 
-        // Fetch offer
-        const offerData = await contract!.getOffer(offerId);
+      const offerData = await marketplace.getOffer(offerId);
+      const listingData = await marketplace.getListing(offerData.listingId);
 
-        // Fetch related listing
-        const listingData = await contract!.getListing(offerData.listingId);
-
-        // Try to fetch escrow if offer is accepted
-        let escrowData: Escrow | null = null;
-        if (offerData.accepted) {
-          try {
-            escrowData = await contract!.getEscrow(offerId);
-          } catch {}
-        }
-
-        // Fetch listing metadata via shared tolerant helper
-        const listingMeta = await loadListingMetadataFromURI(
-          listingData.metadataURI,
-          listingData
-        );
-
-        // Token + fee context
-        const dopAddr = await contract!.getDopToken();
-        const { feeDop, feeUsdLike } = await contract!.getFees();
-        const paymentToken = offerData.paymentToken as string;
-        const itIsEth = paymentToken === ethers.ZeroAddress;
-        setIsEth(itIsEth);
-
-        let symbol = "ETH";
-        let decimals = 18;
-        if (!itIsEth) {
-          try {
-            const erc20 = contract!.getErc20(paymentToken) as unknown as ERC20;
-            const dec = await erc20.decimals();
-            decimals = Number(dec);
-            try {
-              const sym = await erc20.symbol();
-              symbol = String(sym);
-            } catch {
-              symbol = "TOKEN";
-            }
-          } catch {}
-        }
-        setTokenSymbol(symbol);
-        setTokenDecimals(decimals);
-
-        const bps =
-          paymentToken.toLowerCase() === dopAddr.toLowerCase()
-            ? feeDop
-            : feeUsdLike;
-        setFeeBps(bps);
-        const fee = (offerData.amount * bps) / BigInt(10000);
-        setEstFee(fee);
-        setProviderPayout(offerData.amount - fee);
-
-        // Allowance check for ERC20
-        let allowanceVal = BigInt(0);
-        let needs = false;
-        if (!itIsEth && listingData && offerData && clientAddress) {
-          try {
-            const erc20 = contract!.getErc20(paymentToken) as unknown as ERC20;
-            const raw = await erc20.allowance(
-              clientAddress,
-              contract!.contractAddress
-            );
-            allowanceVal = ethers.toBigInt(raw);
-            needs = allowanceVal < offerData.amount;
-          } catch {}
-        }
-        setAllowance(allowanceVal);
-        setNeedsApproval(needs);
-
-        setOffer(offerData);
-        setEscrow(escrowData);
-        setListing(listingData);
-        setListingMetadata(listingMeta);
-
-        // Reviews gating
+      let escrowData: Escrow | null = null;
+      if (offerData.accepted) {
         try {
-          if (escrowData && address) {
-            const finished = isEscrowFinished(escrowData);
-            if (finished) {
-              const reviewed = await contract!.hasReviewed(offerId, address);
-              setHasReviewed(reviewed);
-              setCanReview(!reviewed);
-            } else {
-              setHasReviewed(false);
-              setCanReview(false);
-            }
+          escrowData = await marketplace.getEscrow(offerId);
+        } catch {}
+      }
+
+      const listingMeta = await loadListingMetadataFromURI(
+        listingData.metadataURI,
+        listingData
+      );
+
+      const dopAddr = await marketplace.getDopToken();
+      const { feeDop, feeUsdLike } = await marketplace.getFees();
+      const paymentToken = offerData.paymentToken as string;
+      const itIsEth = paymentToken === ethers.ZeroAddress;
+      setIsEth(itIsEth);
+
+      let symbol = "ETH";
+      let decimals = 18;
+      if (!itIsEth) {
+        try {
+          const erc20 = marketplace.getErc20(paymentToken) as unknown as ERC20;
+          const dec = await erc20.decimals();
+          decimals = Number(dec);
+          try {
+            const sym = await erc20.symbol();
+            symbol = String(sym);
+          } catch {
+            symbol = "TOKEN";
+          }
+        } catch {}
+      }
+      setTokenSymbol(symbol);
+      setTokenDecimals(decimals);
+
+      const bps =
+        paymentToken.toLowerCase() === dopAddr.toLowerCase()
+          ? feeDop
+          : feeUsdLike;
+      setFeeBps(bps);
+      const fee = (offerData.amount * bps) / BigInt(10000);
+      setEstFee(fee);
+      setProviderPayout(offerData.amount - fee);
+
+      const isBrief = Number(listingData.listingType) === 0;
+      const clientAddr = isBrief
+        ? listingData.creator
+        : offerData.proposer;
+
+      let allowanceVal = BigInt(0);
+      let needs = false;
+      if (!itIsEth && clientAddr) {
+        try {
+          const erc20 = marketplace.getErc20(paymentToken) as unknown as ERC20;
+          const raw = await erc20.allowance(
+            clientAddr,
+            marketplace.contractAddress
+          );
+          allowanceVal = ethers.toBigInt(raw);
+          needs = allowanceVal < offerData.amount;
+        } catch {}
+      }
+      setAllowance(allowanceVal);
+      setNeedsApproval(needs);
+
+      setOffer(offerData);
+      setEscrow(escrowData);
+      setListing(listingData);
+      setListingMetadata(listingMeta);
+
+      try {
+        if (escrowData && address) {
+          const finished = isEscrowFinished(escrowData);
+          if (finished) {
+            const reviewed = await marketplace.hasReviewed(offerId, address);
+            setHasReviewed(reviewed);
+            setCanReview(!reviewed);
           } else {
             setHasReviewed(false);
             setCanReview(false);
           }
-        } catch {}
+        } else {
+          setHasReviewed(false);
+          setCanReview(false);
+        }
+      } catch {}
 
-        // Dispute header + appeals if disputed/resolved
-        try {
-          if (
-            escrowData &&
-            (escrowData.status === EscrowStatus.DISPUTED ||
-              escrowData.status === EscrowStatus.RESOLVED)
-          ) {
-            const header = await contract!.getDisputeHeader(offerId);
-            setDisputeHeader(header);
-            const allAppeals = await contract!.getDisputeAppeals(offerId);
-            setAppeals(allAppeals);
-          } else {
-            setDisputeHeader(null);
-            setAppeals([]);
-          }
-        } catch {
+      try {
+        if (
+          escrowData &&
+          (escrowData.status === EscrowStatus.DISPUTED ||
+            escrowData.status === EscrowStatus.RESOLVED)
+        ) {
+          const header = await marketplace.getDisputeHeader(offerId);
+          setDisputeHeader(header);
+          const allAppeals = await marketplace.getDisputeAppeals(offerId);
+          setAppeals(allAppeals);
+        } else {
           setDisputeHeader(null);
           setAppeals([]);
         }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Failed to load offer";
-        setError(msg);
-      } finally {
-        setLoading(false);
+      } catch {
+        setDisputeHeader(null);
+        setAppeals([]);
       }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load offer";
+      setError(msg);
+    } finally {
+      setLoading(false);
     }
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chainId, provider, resolvedParams.id, address]);
+  }, [address, contract, resolvedParams.id]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   // Reusable chat: we will use generic Chat + OfferChatProvider
   const canUseChat = !!address && (isListingCreator || isProposer);
@@ -567,9 +579,9 @@ export default function OfferDetailsPage({
         offer.paymentToken as string
       ) as unknown as ERC20;
       const tx = await token.approve(contract!.contractAddress, offer.amount);
-      await tx;
+      const receipt = await tx.wait();
       await refreshAllowance();
-      toast.showSuccess(
+      notifyReceipt(
         "Success",
         `Approved ${formatTokenAmount(
           offer.amount,
@@ -584,7 +596,8 @@ export default function OfferDetailsPage({
           tokenSymbolFor(offer.paymentToken as string, tokens) !== "Token"
             ? tokenSymbolFor(offer.paymentToken as string, tokens)
             : tokenSymbol
-        }`
+        }`,
+        receipt ?? tx
       );
     } catch (error: unknown) {
       console.error("Token approval failed:", error);
@@ -605,13 +618,12 @@ export default function OfferDetailsPage({
     try {
       // For ETH payments, just send the value with the transaction
       if (isEth) {
-        const tx = await contract!.acceptOffer(
+        const receipt = await contract!.acceptOffer(
           offer.id as bigint,
           offer.amount
         );
-        await tx;
-        toast.showSuccess("Success", "Offer accepted");
-        window.location.reload();
+        notifyReceipt("Success", "Offer accepted", receipt);
+        await loadData();
         return;
       }
 
@@ -624,10 +636,9 @@ export default function OfferDetailsPage({
         return;
       }
 
-      const tx = await contract!.acceptOffer(offer.id as bigint);
-      await tx;
-      toast.showSuccess("Success", "Offer accepted");
-      window.location.reload();
+      const receipt = await contract!.acceptOffer(offer.id as bigint);
+      notifyReceipt("Success", "Offer accepted", receipt);
+      await loadData();
     } catch (error: unknown) {
       console.error("Accept offer failed:", error);
       toast.showContractError("Error", error, "Failed to accept offer");
@@ -641,8 +652,9 @@ export default function OfferDetailsPage({
 
     setSubmitting(true);
     try {
-      await contract!.validateWork(escrow.offerId);
-      window.location.reload();
+      const receipt = await contract!.validateWork(escrow.offerId);
+      notifyReceipt("Success", "Work validated", receipt);
+      await loadData();
     } catch (error: unknown) {
       console.error("Validate work failed:", error);
       toast.showContractError("Error", error, "Failed to validate work");
@@ -662,9 +674,9 @@ export default function OfferDetailsPage({
         setConfirm((c) => ({ ...c, open: false }));
         setSubmitting(true);
         try {
-          const tx = await contract!.cancelOffer(offer.id as bigint);
-          await tx;
-          window.location.reload();
+          const receipt = await contract!.cancelOffer(offer.id as bigint);
+          notifyReceipt("Offer cancelled", undefined, receipt);
+          await loadData();
         } catch (error: unknown) {
           console.error("Cancel offer failed:", error);
           toast.showContractError("Error", error, "Failed to cancel offer");
@@ -749,9 +761,12 @@ export default function OfferDetailsPage({
       };
       const cid = await uploadDisputeJson(payload);
 
-      await contract!.openDisputeWithCID(escrow!.offerId, cid);
-      toast.showSuccess("Success", "Dispute opened");
-      window.location.reload();
+      const receipt = await contract!.openDisputeWithCID(escrow!.offerId, cid);
+      notifyReceipt("Success", "Dispute opened", receipt);
+      setShowDisputeForm(false);
+      setDisputeReason("");
+      setDisputeFiles([]);
+      await loadData();
     } catch (error: unknown) {
       console.error("Open dispute with CID failed:", error);
       toast.showContractError("Error", error, "Failed to open dispute");
@@ -802,9 +817,12 @@ export default function OfferDetailsPage({
       };
       const cid = await uploadDisputeJson(payload);
 
-      await contract!.appealDispute(escrow!.offerId, cid);
-      toast.showSuccess("Success", "Appeal submitted");
-      window.location.reload();
+      const receipt = await contract!.appealDispute(escrow!.offerId, cid);
+      notifyReceipt("Success", "Appeal submitted", receipt);
+      setShowAppealForm(false);
+      setAppealReason("");
+      setAppealFiles([]);
+      await loadData();
     } catch (error: unknown) {
       console.error("Appeal with CID failed:", error);
       toast.showContractError("Error", error, "Failed to submit appeal");
@@ -840,9 +858,15 @@ export default function OfferDetailsPage({
       const json = JSON.stringify(reviewPayload);
       const reviewURI = `data:application/json;base64,${btoa(json)}`;
 
-      await contract!.leaveReview(offer.id as bigint, rating, reviewURI);
-      toast.showSuccess("Success", "Review submitted");
-      window.location.reload();
+      const receipt = await contract!.leaveReview(
+        offer.id as bigint,
+        rating,
+        reviewURI
+      );
+      notifyReceipt("Success", "Review submitted", receipt);
+      setReviewText("");
+      setRating(5);
+      await loadData();
     } catch (error: unknown) {
       console.error("Leave review failed:", error);
       toast.showContractError("Error", error, "Failed to submit review");

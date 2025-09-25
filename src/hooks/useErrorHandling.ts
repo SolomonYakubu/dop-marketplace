@@ -1,6 +1,11 @@
 import { useState } from "react";
 
-export interface ToastMessage {
+export interface ToastExtras {
+  txHash?: string;
+  explorerUrl?: string;
+}
+
+export interface ToastMessage extends ToastExtras {
   id: string;
   type: "success" | "error" | "warning" | "info";
   title: string;
@@ -20,30 +25,47 @@ export function useToast() {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
-  const showSuccess = (title: string, message?: string) => {
-    addToast({ type: "success", title, message });
+  const showSuccess = (
+    title: string,
+    message?: string,
+    extras?: ToastExtras
+  ) => {
+    addToast({ type: "success", title, message, ...extras });
   };
 
-  const showError = (title: string, message?: string) => {
-    addToast({ type: "error", title, message });
+  const showError = (
+    title: string,
+    message?: string,
+    extras?: ToastExtras
+  ) => {
+    addToast({ type: "error", title, message, ...extras });
   };
 
   // Convenience: format and show a smart contract / RPC error
   const showContractError = (
     title: string,
     error: unknown,
-    fallback?: string
+    fallback?: string,
+    extras?: ToastExtras
   ) => {
     const msg = handleContractError(error) || fallback || "Transaction failed";
-    addToast({ type: "error", title, message: msg });
+    addToast({ type: "error", title, message: msg, ...extras });
   };
 
-  const showWarning = (title: string, message?: string) => {
-    addToast({ type: "warning", title, message });
+  const showWarning = (
+    title: string,
+    message?: string,
+    extras?: ToastExtras
+  ) => {
+    addToast({ type: "warning", title, message, ...extras });
   };
 
-  const showInfo = (title: string, message?: string) => {
-    addToast({ type: "info", title, message });
+  const showInfo = (
+    title: string,
+    message?: string,
+    extras?: ToastExtras
+  ) => {
+    addToast({ type: "info", title, message, ...extras });
   };
 
   return {

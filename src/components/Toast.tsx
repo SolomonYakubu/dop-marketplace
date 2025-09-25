@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ToastMessage } from "@/hooks/useErrorHandling";
-import { CheckCircle2, XCircle, AlertTriangle, Info, X } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Info, X, Copy } from "lucide-react";
 
 interface ToastProps {
   toast: ToastMessage;
@@ -42,6 +42,7 @@ const VARIANTS: Record<
 function Toast({ toast, onRemove, duration = 5000 }: ToastProps) {
   const variant = VARIANTS[toast.type ?? "info"] ?? VARIANTS.info;
   const [progress, setProgress] = useState(100);
+  const [copied, setCopied] = useState(false);
 
   const startRef = useRef<number | null>(null);
   const remainingRef = useRef(duration);
@@ -100,6 +101,24 @@ function Toast({ toast, onRemove, duration = 5000 }: ToastProps) {
     }
   };
 
+  const shortHash = useMemo(() => {
+    const hash = toast.txHash;
+    if (!hash) return null;
+    if (hash.length <= 20) return hash;
+    return `${hash.slice(0, 10)}…${hash.slice(-8)}`;
+  }, [toast.txHash]);
+
+  const handleCopy = useCallback(async () => {
+    if (!toast.txHash) return;
+    try {
+      await navigator.clipboard.writeText(toast.txHash);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }, [toast.txHash]);
+
   return (
     <div
       role={variant.ariaRole}
@@ -117,6 +136,34 @@ function Toast({ toast, onRemove, duration = 5000 }: ToastProps) {
           <p className="mt-1 text-xs/5 text-white/80 dark:text-white/70 line-clamp-4">
             {toast.message}
           </p>
+        )}
+        {toast.txHash && (
+          <div className="mt-2 space-y-1 rounded-md border border-white/10 bg-white/5 p-2 text-[11px] text-gray-200">
+            <div className="flex items-center gap-2">
+              <span className="uppercase text-gray-400">Tx</span>
+              <span className="font-mono text-xs text-white/90">
+                {shortHash}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1 rounded-sm border border-white/10 px-1.5 py-0.5 text-[10px] text-white/70 transition hover:text-white hover:border-white/20"
+              >
+                <Copy className="h-3 w-3" />
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            {toast.explorerUrl && (
+              <a
+                href={toast.explorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-blue-200 transition hover:text-blue-100"
+              >
+                View on explorer
+              </a>
+            )}
+          </div>
         )}
       </div>
       <button

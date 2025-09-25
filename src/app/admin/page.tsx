@@ -10,6 +10,8 @@ import {
   toGatewayUrl,
   fetchIpfsJson,
   formatTokenAmount,
+  extractTxHash,
+  getExplorerTxUrl,
   type KnownTokens,
 } from "@/lib/utils";
 import Image from "next/image";
@@ -217,8 +219,22 @@ function DisputePayloadView({ payload }: { payload: DisputePayload | null }) {
 
 export default function AdminPage() {
   const { address, isConnected } = useAccount();
-  const { contract } = useMarketplaceContract();
+  const { contract, chainId } = useMarketplaceContract();
   const toast = useToastContext();
+  const notifyReceipt = (
+    title: string,
+    message?: string,
+    receipt?: unknown
+  ) => {
+    if (!receipt) {
+      toast.showSuccess(title, message);
+      return;
+    }
+    const txHash = extractTxHash(receipt);
+    const explorerUrl =
+      getExplorerTxUrl(txHash, { chainId }) || undefined;
+    toast.showSuccess(title, message, { txHash, explorerUrl });
+  };
   // Prevent SSR/Client hydration mismatches for wallet-dependent UI
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -618,10 +634,14 @@ export default function AdminPage() {
       const badgeNum = Number(
         SPECIAL_BADGES.find((b) => b.key === badgeKey)?.value ?? 6
       );
-      await contract.grantBadge(badgeTarget.trim(), badgeNum);
-      toast.showSuccess(
+      const receipt = await contract.grantBadge(
+        badgeTarget.trim(),
+        badgeNum
+      );
+      notifyReceipt(
         "Badge granted",
-        `Granted ${badgeKey} to ${badgeTarget}`
+        `Granted ${badgeKey} to ${badgeTarget}`,
+        receipt
       );
     } catch (e: unknown) {
       const msg =
@@ -642,10 +662,14 @@ export default function AdminPage() {
       const badgeNum = Number(
         SPECIAL_BADGES.find((b) => b.key === badgeKey)?.value ?? 6
       );
-      await contract.revokeBadge(badgeTarget.trim(), badgeNum);
-      toast.showSuccess(
+      const receipt = await contract.revokeBadge(
+        badgeTarget.trim(),
+        badgeNum
+      );
+      notifyReceipt(
         "Badge revoked",
-        `Revoked ${badgeKey} from ${badgeTarget}`
+        `Removed ${badgeKey} from ${badgeTarget}`,
+        receipt
       );
     } catch (e: unknown) {
       const msg =
@@ -703,12 +727,14 @@ export default function AdminPage() {
       "pause",
       async () => {
         try {
-          const tx = next ? await contract.pause() : await contract.unpause();
-          await tx.wait?.();
+          const receipt = next
+            ? await contract.pause()
+            : await contract.unpause();
           setPaused(next);
-          toast.showSuccess(
+          notifyReceipt(
             "Success",
-            `Contract ${next ? "paused" : "unpaused"}`
+            `Contract ${next ? "paused" : "unpaused"}`,
+            receipt
           );
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
@@ -735,9 +761,8 @@ export default function AdminPage() {
             BigInt(usdBps),
             BigInt(dopBps)
           );
-          await receipt.wait?.();
           setFees({ feeUsdLike: BigInt(usdBps), feeDop: BigInt(dopBps) });
-          toast.showSuccess("Fees updated");
+          notifyReceipt("Fees updated", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update fees", message);
@@ -769,9 +794,12 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.setBoostParams(price, duration);
-          await receipt.wait?.();
           setBoostParams({ price, duration });
-          toast.showSuccess("Listing boost params updated");
+          notifyReceipt(
+            "Listing boost params updated",
+            undefined,
+            receipt
+          );
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update boost params", message);
@@ -805,9 +833,12 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.setProfileBoostParams(price, duration);
-          await receipt.wait?.();
           setProfileBoostParams({ price, duration });
-          toast.showSuccess("Profile boost params updated");
+          notifyReceipt(
+            "Profile boost params updated",
+            undefined,
+            receipt
+          );
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update profile boost params", message);
@@ -826,9 +857,8 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.setTreasury(addr);
-          await receipt.wait?.();
           setTreasury(addr);
-          toast.showSuccess("Treasury updated");
+          notifyReceipt("Treasury updated", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update treasury", message);
@@ -851,10 +881,9 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.setTokens(dopAddr, usdcAddr);
-          await receipt.wait?.();
           setDop(dopAddr);
           setUsdc(usdcAddr);
-          toast.showSuccess("Tokens updated");
+          notifyReceipt("Tokens updated", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update tokens", message);
@@ -877,10 +906,9 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.setDexRouter(dr, w);
-          await receipt.wait?.();
           setRouter(dr);
           setWeth(w);
-          toast.showSuccess("DEX router updated");
+          notifyReceipt("DEX router updated", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update router", message);
@@ -899,8 +927,7 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.verifyProfile(u);
-          await receipt.wait?.();
-          toast.showSuccess("Profile verified");
+          notifyReceipt("Profile verified", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to verify profile", message);
@@ -1150,8 +1177,7 @@ export default function AdminPage() {
       async () => {
         try {
           const receipt = await contract.resolveDispute(offerId, outcome);
-          await receipt.wait?.();
-          toast.showSuccess("Dispute resolved");
+          notifyReceipt("Dispute resolved", undefined, receipt);
           // Refresh status for this offer
           try {
             const e = await contract.getEscrow(offerId);

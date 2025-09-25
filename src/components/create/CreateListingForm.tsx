@@ -6,7 +6,7 @@ import { useMarketplaceContract } from "@/hooks/useMarketplaceContract";
 import { ListingType } from "@/types/marketplace";
 import type { ListingMetadata } from "@/types/marketplace";
 import { useSearchParams } from "next/navigation";
-import { formatAddress } from "@/lib/utils";
+import { formatAddress, extractTxHash, getExplorerTxUrl } from "@/lib/utils";
 import { useToastContext } from "@/components/providers";
 import {
   Briefcase,
@@ -119,7 +119,16 @@ export function CreateListingForm({
         BigInt(category),
         `ipfs://${metaHash}`
       );
-      toast.showSuccess("Created", `${type} listing created`);
+      const txHash = extractTxHash(receipt);
+      const explorerUrl =
+        getExplorerTxUrl(txHash, {
+          chainId: chain?.id,
+          chain: chain ?? undefined,
+        }) || undefined;
+      toast.showSuccess("Created", `${type} listing created`, {
+        txHash,
+        explorerUrl,
+      });
       console.log("Tx receipt", receipt);
       // notify caller with last id if possible
       try {

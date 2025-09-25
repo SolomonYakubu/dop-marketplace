@@ -7,18 +7,23 @@ import { config } from "@/lib/rainbowkit";
 import "@rainbow-me/rainbowkit/styles.css";
 import { createContext, useContext, useMemo } from "react";
 import { ToastContainer } from "./Toast";
-import { useToast, ToastMessage } from "@/hooks/useErrorHandling";
+import { useToast, ToastMessage, ToastExtras } from "@/hooks/useErrorHandling";
 
 const queryClient = new QueryClient();
 
 // Toast context so any component can trigger notifications
 export const ToastContext = createContext<{
   toasts: ToastMessage[];
-  showSuccess: (title: string, message?: string) => void;
-  showError: (title: string, message?: string) => void;
-  showContractError: (title: string, error: unknown, fallback?: string) => void;
-  showWarning: (title: string, message?: string) => void;
-  showInfo: (title: string, message?: string) => void;
+  showSuccess: (title: string, message?: string, extras?: ToastExtras) => void;
+  showError: (title: string, message?: string, extras?: ToastExtras) => void;
+  showContractError: (
+    title: string,
+    error: unknown,
+    fallback?: string,
+    extras?: ToastExtras
+  ) => void;
+  showWarning: (title: string, message?: string, extras?: ToastExtras) => void;
+  showInfo: (title: string, message?: string, extras?: ToastExtras) => void;
 } | null>(null);
 
 export function useToastContext() {
