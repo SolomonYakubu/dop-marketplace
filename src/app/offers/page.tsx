@@ -30,6 +30,7 @@ import {
   formatTokenAmountWithSymbol,
   timeAgo,
 } from "@/lib/utils";
+import { createReceiptNotifier } from "@/lib/txReceipt";
 import { useToastContext } from "@/components/providers";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
@@ -187,6 +188,10 @@ export default function OffersPage() {
     chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
 
   const tokens = getTokenAddresses(chainId);
+  const notifyReceipt = useMemo(
+    () => createReceiptNotifier(toast, { chain }),
+    [toast, chain]
+  );
 
   const loadOffers = useCallback(async () => {
     if (!address || !chain) return;
@@ -319,10 +324,8 @@ export default function OffersPage() {
       try {
         setActionLoading(offerId.toString());
 
-        const tx = await contract!.acceptOffer(offerId);
-        await tx;
-
-        toast.showSuccess("Success", "Offer accepted successfully!");
+        const receipt = await contract!.acceptOffer(offerId);
+        notifyReceipt("Success", "Offer accepted successfully!", receipt);
         await loadOffers();
       } catch (e) {
         console.error("Failed to accept offer:", e);
@@ -331,7 +334,7 @@ export default function OffersPage() {
         setActionLoading(null);
       }
     },
-    [chain, address, contract, toast, loadOffers]
+    [chain, address, contract, toast, loadOffers, notifyReceipt]
   );
 
   const validateWork = useCallback(
@@ -341,10 +344,8 @@ export default function OffersPage() {
       try {
         setActionLoading(`validate-${offerId.toString()}`);
 
-        const tx = await contract!.validateWork(offerId);
-        await tx;
-
-        toast.showSuccess("Success", "Work validated successfully!");
+        const receipt = await contract!.validateWork(offerId);
+        notifyReceipt("Success", "Work validated successfully!", receipt);
         await loadOffers();
       } catch (e) {
         console.error("Failed to validate work:", e);
@@ -353,7 +354,7 @@ export default function OffersPage() {
         setActionLoading(null);
       }
     },
-    [chain, address, contract, toast, loadOffers]
+    [chain, address, contract, toast, loadOffers, notifyReceipt]
   );
 
   const cancelOffer = useCallback(
@@ -369,10 +370,8 @@ export default function OffersPage() {
           try {
             setActionLoading(`cancel-${offerId.toString()}`);
 
-            const tx = await contract!.cancelOffer(offerId);
-            await tx;
-
-            toast.showSuccess("Success", "Offer cancelled successfully!");
+            const receipt = await contract!.cancelOffer(offerId);
+            notifyReceipt("Success", "Offer cancelled successfully!", receipt);
             await loadOffers();
           } catch (e) {
             console.error("Failed to cancel offer:", e);
@@ -383,7 +382,7 @@ export default function OffersPage() {
         },
       });
     },
-    [chain, address, contract, toast, loadOffers]
+    [chain, address, contract, toast, loadOffers, notifyReceipt]
   );
 
   useEffect(() => {

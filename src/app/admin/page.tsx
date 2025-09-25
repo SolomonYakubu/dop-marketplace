@@ -10,10 +10,9 @@ import {
   toGatewayUrl,
   fetchIpfsJson,
   formatTokenAmount,
-  extractTxHash,
-  getExplorerTxUrl,
   type KnownTokens,
 } from "@/lib/utils";
+import { createReceiptNotifier } from "@/lib/txReceipt";
 import Image from "next/image";
 import { ethers } from "ethers";
 import {
@@ -221,20 +220,10 @@ export default function AdminPage() {
   const { address, isConnected } = useAccount();
   const { contract, chainId } = useMarketplaceContract();
   const toast = useToastContext();
-  const notifyReceipt = (
-    title: string,
-    message?: string,
-    receipt?: unknown
-  ) => {
-    if (!receipt) {
-      toast.showSuccess(title, message);
-      return;
-    }
-    const txHash = extractTxHash(receipt);
-    const explorerUrl =
-      getExplorerTxUrl(txHash, { chainId }) || undefined;
-    toast.showSuccess(title, message, { txHash, explorerUrl });
-  };
+  const notifyReceipt = useMemo(
+    () => createReceiptNotifier(toast, { chainId }),
+    [toast, chainId]
+  );
   // Prevent SSR/Client hydration mismatches for wallet-dependent UI
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -634,10 +623,7 @@ export default function AdminPage() {
       const badgeNum = Number(
         SPECIAL_BADGES.find((b) => b.key === badgeKey)?.value ?? 6
       );
-      const receipt = await contract.grantBadge(
-        badgeTarget.trim(),
-        badgeNum
-      );
+      const receipt = await contract.grantBadge(badgeTarget.trim(), badgeNum);
       notifyReceipt(
         "Badge granted",
         `Granted ${badgeKey} to ${badgeTarget}`,
@@ -662,10 +648,7 @@ export default function AdminPage() {
       const badgeNum = Number(
         SPECIAL_BADGES.find((b) => b.key === badgeKey)?.value ?? 6
       );
-      const receipt = await contract.revokeBadge(
-        badgeTarget.trim(),
-        badgeNum
-      );
+      const receipt = await contract.revokeBadge(badgeTarget.trim(), badgeNum);
       notifyReceipt(
         "Badge revoked",
         `Removed ${badgeKey} from ${badgeTarget}`,
@@ -795,11 +778,7 @@ export default function AdminPage() {
         try {
           const receipt = await contract.setBoostParams(price, duration);
           setBoostParams({ price, duration });
-          notifyReceipt(
-            "Listing boost params updated",
-            undefined,
-            receipt
-          );
+          notifyReceipt("Listing boost params updated", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update boost params", message);
@@ -834,11 +813,7 @@ export default function AdminPage() {
         try {
           const receipt = await contract.setProfileBoostParams(price, duration);
           setProfileBoostParams({ price, duration });
-          notifyReceipt(
-            "Profile boost params updated",
-            undefined,
-            receipt
-          );
+          notifyReceipt("Profile boost params updated", undefined, receipt);
         } catch (e: unknown) {
           const message = e instanceof Error ? e.message : String(e);
           toast.showError("Failed to update profile boost params", message);

@@ -34,6 +34,7 @@ import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { ToastContainer } from "@/components/Toast";
 import { LoadingButton } from "@/components/Loading";
 import { EscrowStatus } from "@/types/marketplace";
+import { createReceiptNotifier } from "@/lib/txReceipt";
 import {
   Sparkles,
   Tag as TagIcon,
@@ -136,6 +137,10 @@ export default function GigDetailsPage({
 
   const toast = useToast();
   const { loading: submitting, execute } = useAsyncOperation();
+  const notifyReceipt = useMemo(
+    () => createReceiptNotifier(toast, { chain }),
+    [toast, chain]
+  );
 
   // Confirmation modal state
   const [confirm, setConfirm] = useState<{
@@ -578,7 +583,7 @@ export default function GigDetailsPage({
   const handleBookService = async () => {
     if (!address || !state || submitting) return;
 
-    const result = await execute(async () => {
+    const receipt = await execute(async () => {
       if (!contract) throw new Error("Contract not ready");
 
       const symbol = bookingDetails.token || "ETH";
@@ -609,10 +614,14 @@ export default function GigDetailsPage({
       }
 
       // Create the offer (metadata can be sent off-chain via chat; on-chain stores terms)
-      await contract.makeOffer(BigInt(resolvedParams.id), amount, paymentToken);
+      return await contract.makeOffer(
+        BigInt(resolvedParams.id),
+        amount,
+        paymentToken
+      );
     });
 
-    if (result !== null) {
+    if (receipt) {
       setShowBookingForm(false);
       setBookingDetails({
         description: "",
@@ -620,9 +629,10 @@ export default function GigDetailsPage({
         budget: "",
         token: "ETH",
       });
-      toast.showSuccess(
+      notifyReceipt(
         "Booking Successful",
-        "Your booking request has been sent to the service provider."
+        "Your booking request has been sent to the service provider.",
+        receipt
       );
     }
   };
@@ -638,11 +648,11 @@ export default function GigDetailsPage({
         try {
           setOfferActionLoading("cancel");
           if (!contract) throw new Error("Contract not ready");
-          const tx = await contract.cancelOffer(myOffer.id);
-          await tx.wait();
-          toast.showSuccess(
+          const receipt = await contract.cancelOffer(myOffer.id);
+          notifyReceipt(
             "Offer cancelled",
-            "Your offer has been cancelled."
+            "Your offer has been cancelled.",
+            receipt
           );
           // refresh my offer
           setMyOffer({ ...myOffer, cancelled: true });
@@ -667,9 +677,8 @@ export default function GigDetailsPage({
         try {
           setOfferActionLoading("dispute");
           if (!contract) throw new Error("Contract not ready");
-          const tx = await contract.openDispute(myEscrow.offerId);
-          await tx.wait();
-          toast.showSuccess("Dispute opened", "Refund request submitted.");
+          const receipt = await contract.openDispute(myEscrow.offerId);
+          notifyReceipt("Dispute opened", "Refund request submitted.", receipt);
         } catch (e) {
           toast.showContractError("Dispute failed", e);
         } finally {
@@ -788,17 +797,21 @@ export default function GigDetailsPage({
       const current = await erc20.allowance(owner, spender);
       if (current < boostPrice) {
         const tx0 = await erc20.approve(spender, boostPrice);
-        await tx0.wait?.();
+        const approvalReceipt = (await tx0.wait?.()) ?? tx0;
+        notifyReceipt(
+          "Approval complete",
+          "Token allowance updated for boosting",
+          approvalReceipt
+        );
       }
       const receipt = await contract!.buyBoost(state.id, boostPrice);
-      await receipt;
+      notifyReceipt("Listing boosted", undefined, receipt);
       // refresh UI
       setState((s) => (s ? { ...s, isBoosted: true } : s));
       try {
         const price = await contract!.currentListingBoostPrice({ force: true });
         setBoostPrice(price);
       } catch {}
-      toast.showSuccess("Listing boosted");
     } catch (e) {
       toast.showContractError("Boost failed", e);
     }

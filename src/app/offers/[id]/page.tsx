@@ -23,9 +23,8 @@ import {
   loadListingMetadataFromURI,
   timeAgo,
   toGatewayUrl,
-  extractTxHash,
-  getExplorerTxUrl,
 } from "@/lib/utils";
+import { createReceiptNotifier } from "@/lib/txReceipt";
 import { useToastContext } from "@/components/providers";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import {
@@ -129,18 +128,9 @@ export default function OfferDetailsPage({
   const [rating, setRating] = useState<number>(5);
   const [reviewText, setReviewText] = useState<string>("");
   const [leavingReview, setLeavingReview] = useState<boolean>(false);
-  const notifyReceipt = useCallback(
-    (title: string, message?: string, receipt?: unknown) => {
-      if (!receipt) {
-        toast.showSuccess(title, message);
-        return;
-      }
-      const txHash = extractTxHash(receipt);
-      const explorerUrl =
-        getExplorerTxUrl(txHash, { chainId: chain?.id, chain }) || undefined;
-      toast.showSuccess(title, message, { txHash, explorerUrl });
-    },
-    [chain, toast]
+  const notifyReceipt = useMemo(
+    () => createReceiptNotifier(toast, { chain }),
+    [toast, chain]
   );
 
   // Dispute state
@@ -461,9 +451,7 @@ export default function OfferDetailsPage({
       setProviderPayout(offerData.amount - fee);
 
       const isBrief = Number(listingData.listingType) === 0;
-      const clientAddr = isBrief
-        ? listingData.creator
-        : offerData.proposer;
+      const clientAddr = isBrief ? listingData.creator : offerData.proposer;
 
       let allowanceVal = BigInt(0);
       let needs = false;
@@ -894,12 +882,12 @@ export default function OfferDetailsPage({
           <div className="space-y-2">
             {!isEth && (
               <div className="p-3 rounded border border-gray-800 bg-gray-900/40 text-[11px] text-gray-300 space-y-1">
-                <div className="flex justify-between">
+                {/* <div className="flex justify-between">
                   <span className="text-gray-500">Allowance</span>
                   <span className="text-white">
                     {displayToken(allowance, offer!.paymentToken as string)}
                   </span>
-                </div>
+                </div> */}
                 <div className="flex justify-between">
                   <span className="text-gray-500">Required</span>
                   <span className="text-white">

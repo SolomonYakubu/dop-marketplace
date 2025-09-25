@@ -30,6 +30,7 @@ import {
   timeAgo,
   getRpcUrl,
 } from "@/lib/utils";
+import { createReceiptNotifier } from "@/lib/txReceipt";
 import { useToast, useAsyncOperation } from "@/hooks/useErrorHandling";
 import { LoadingButton } from "@/components/Loading";
 import Image from "next/image";
@@ -82,6 +83,10 @@ export default function PublicProfilePage({
   const tokenAddresses = useMemo(() => getTokenAddresses(chainId), [chainId]);
   const toast = useToast();
   const { loading: boosting, execute } = useAsyncOperation();
+  const notifyReceipt = useMemo(
+    () => createReceiptNotifier(toast, { chain, chainId }),
+    [toast, chain, chainId]
+  );
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -429,7 +434,7 @@ export default function PublicProfilePage({
       toast.showError("Unavailable", "Boost price not available.");
       return;
     }
-    const result = await execute(async () => {
+    const receipt = await execute(async () => {
       let dop = dopToken;
       if (!dop) {
         try {
@@ -443,12 +448,21 @@ export default function PublicProfilePage({
       const current: bigint = await erc20.allowance(owner, spender);
       if (current < toPay) {
         const tx = await erc20.approve(spender, toPay);
-        await tx.wait?.();
+        const approvalReceipt = (await tx.wait?.()) ?? tx;
+        notifyReceipt(
+          "Approval complete",
+          "Token allowance updated for boosting",
+          approvalReceipt
+        );
       }
-      await contract!.buyProfileBoost(toPay);
+      return await contract!.buyProfileBoost(toPay);
     });
-    if (result !== null) {
-      toast.showSuccess("Profile Boosted", "Your profile boost is now active.");
+    if (receipt) {
+      notifyReceipt(
+        "Profile Boosted",
+        "Your profile boost is now active.",
+        receipt
+      );
       setIsBoosted(true);
       // refresh dynamic price cache for UI
       try {
@@ -467,7 +481,7 @@ export default function PublicProfilePage({
       toast.showError("Unavailable", "Boost price not available.");
       return;
     }
-    await execute(async () => {
+    const receipt = await execute(async () => {
       setBoostingListingId(listingId);
       try {
         let dop = dopToken;
@@ -479,18 +493,29 @@ export default function PublicProfilePage({
         const current: bigint = await erc20.allowance(owner, spender);
         if (current < listingBoostPrice) {
           const tx0 = await erc20.approve(spender, listingBoostPrice);
-          await tx0.wait?.();
+          const approvalReceipt = (await tx0.wait?.()) ?? tx0;
+          notifyReceipt(
+            "Approval complete",
+            "Token allowance updated for boosting",
+            approvalReceipt
+          );
         }
-        await contract!.buyBoost(listingId, listingBoostPrice);
-        toast.showSuccess("Listing boosted");
+        const boostReceipt = await contract!.buyBoost(
+          listingId,
+          listingBoostPrice
+        );
         try {
           const p = await contract!.currentListingBoostPrice({ force: true });
           setListingBoostPrice(p);
         } catch {}
+        return boostReceipt;
       } finally {
         setBoostingListingId(null);
       }
     });
+    if (receipt) {
+      notifyReceipt("Listing boosted", undefined, receipt);
+    }
   }
 
   const disputes = useMemo(
@@ -549,8 +574,9 @@ export default function PublicProfilePage({
         .map((s) => s.trim())
         .filter(Boolean);
       const avatarCid = await handleAvatarUploadIfNeeded();
+      let profileReceipt: unknown;
       if (profile && profile.joinedAt && profile.joinedAt !== BigInt(0)) {
-        await contract!.updateProfile(
+        profileReceipt = await contract!.updateProfile(
           bio,
           skillsArr,
           portfolioUri ? portfolioUri : "",
@@ -565,7 +591,21 @@ export default function PublicProfilePage({
             const underlying: UsernameCapable | undefined = (
               contract as unknown as { contract?: UsernameCapable }
             ).contract;
-            if (underlying?.setUsername) await underlying.setUsername(username);
+            if (underlying?.setUsername) {
+              const usernameTx = await underlying.setUsername(username);
+              const waited =
+                typeof (usernameTx as { wait?: () => Promise<unknown> })
+                  .wait === "function"
+                  ? await (
+                      usernameTx as unknown as { wait: () => Promise<unknown> }
+                    ).wait()
+                  : undefined;
+              notifyReceipt(
+                "Username updated",
+                undefined,
+                waited ?? usernameTx
+              );
+            }
           } catch (err) {
             console.warn("Username update failed", err);
           }
@@ -573,7 +613,7 @@ export default function PublicProfilePage({
       } else {
         if (!username.trim())
           throw new Error("Username required for new profile");
-        await contract!.createProfile(
+        profileReceipt = await contract!.createProfile(
           bio,
           skillsArr,
           portfolioUri ? portfolioUri : "",
@@ -582,7 +622,11 @@ export default function PublicProfilePage({
           avatarCid || ""
         );
       }
-      toast.showSuccess("Success", "Profile saved successfully!");
+      notifyReceipt(
+        "Profile saved",
+        "Profile saved successfully!",
+        profileReceipt
+      );
       // Refresh view
       try {
         const refreshed = (await contract!.getProfile(
@@ -606,6 +650,7 @@ export default function PublicProfilePage({
     toast,
     userType,
     username,
+    notifyReceipt,
     handleAvatarUploadIfNeeded,
   ]);
 

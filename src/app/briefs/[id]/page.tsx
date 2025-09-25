@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState, use, useCallback } from "react";
+import { useEffect, useState, use, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -34,6 +34,7 @@ import {
 import { Offer, EscrowStatus, Listing } from "@/types/marketplace";
 import { useToastContext } from "@/components/providers";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { createReceiptNotifier } from "@/lib/txReceipt";
 
 interface OfferWithEscrow extends Offer {
   escrowStatus?: EscrowStatus;
@@ -91,7 +92,7 @@ export default function BriefDetailsPage({
   // Offer form state
   const [showOfferForm, setShowOfferForm] = useState(false);
   const [offerAmount, setOfferAmount] = useState("");
-  const [paymentToken, setPaymentToken] = useState("ETH");
+  const [paymentToken, setPaymentToken] = useState("DOP");
   const [submittingOffer, setSubmittingOffer] = useState(false);
   const [boostPrice, setBoostPrice] = useState<bigint | null>(null);
   const [boostDurationDays, setBoostDurationDays] = useState<number | null>(
@@ -111,6 +112,10 @@ export default function BriefDetailsPage({
     chain?.id ?? (Number(process.env.NEXT_PUBLIC_CHAIN_ID) || 11124);
 
   const tokens = getTokenAddresses(chainId);
+  const notifyReceipt = useMemo(
+    () => createReceiptNotifier(toast, { chain }),
+    [toast, chain]
+  );
 
   const loadListing = useCallback(async () => {
     setLoading(true);
@@ -253,11 +258,15 @@ export default function BriefDetailsPage({
       const cur = await erc20.allowance(owner, spender);
       if (cur < boostPrice) {
         const tx0 = await erc20.approve(spender, boostPrice);
-        await tx0.wait?.();
+        const approvalReceipt = (await tx0.wait?.()) ?? tx0;
+        notifyReceipt(
+          "Approval complete",
+          "Token allowance updated for boosting",
+          approvalReceipt
+        );
       }
       const receipt = await contract.buyBoost(state.id, boostPrice);
-      await receipt;
-      toast.showSuccess("Listing boosted");
+      notifyReceipt("Listing boosted", undefined, receipt);
       await loadListing();
       // Refresh dynamic price
       try {
@@ -299,14 +308,16 @@ export default function BriefDetailsPage({
         finalAmount = ethers.parseUnits(offerAmount, dec);
       }
 
-      const tx = await contract.makeOffer(state.id, finalAmount, tokenAddress);
-      await tx;
-
-      toast.showSuccess("Offer submitted");
+      const receipt = await contract.makeOffer(
+        state.id,
+        finalAmount,
+        tokenAddress
+      );
+      notifyReceipt("Offer submitted", undefined, receipt);
       setOfferAmount("");
       setShowOfferForm(false);
       await loadOffers();
-      window.location.reload();
+      await loadListing();
     } catch (e) {
       console.error("Failed to submit offer:", e);
       toast.showContractError("Submit failed", e, "Failed to submit offer");
@@ -320,12 +331,10 @@ export default function BriefDetailsPage({
 
     try {
       if (!contract) throw new Error("Contract not ready");
-      const tx = await contract.acceptOffer(offerId);
-      await tx.wait();
-
-      toast.showSuccess("Offer accepted");
+      const receipt = await contract.acceptOffer(offerId);
+      notifyReceipt("Offer accepted", undefined, receipt);
       await loadOffers();
-      window.location.reload();
+      await loadListing();
     } catch (e) {
       console.error("Failed to accept offer:", e);
       toast.showContractError("Accept failed", e);
@@ -336,11 +345,10 @@ export default function BriefDetailsPage({
     if (!chain || !address) return;
     try {
       if (!contract) throw new Error("Contract not ready");
-      const tx = await contract.cancelOffer(offerId);
-      await tx.wait();
-
-      toast.showSuccess("Offer cancelled");
+      const receipt = await contract.cancelOffer(offerId);
+      notifyReceipt("Offer cancelled", undefined, receipt);
       await loadOffers();
+      await loadListing();
     } catch (e) {
       console.error("Failed to cancel offer:", e);
       toast.showContractError("Cancel failed", e);
@@ -624,9 +632,9 @@ export default function BriefDetailsPage({
                         onChange={(e) => setPaymentToken(e.target.value)}
                         className="w-full rounded-md border border-white/10 bg-gray-950/70 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-white/15"
                       >
+                        {tokens.DOP && <option value="DOP">DOP</option>}
                         <option value="ETH">ETH</option>
                         {tokens.USDC && <option value="USDC">USDC</option>}
-                        {tokens.DOP && <option value="DOP">DOP</option>}
                       </select>
                     </div>
                     <div>
