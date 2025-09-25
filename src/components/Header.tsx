@@ -11,6 +11,7 @@ import { ethers } from "ethers";
 import { formatTokenAmountWithSymbol, type KnownTokens } from "@/lib/utils";
 import { MessageSquare } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 export function Header() {
   const { address } = useAccount();
   const [profileDropdown, setProfileDropdown] = useState(false);
@@ -23,7 +24,7 @@ export function Header() {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const toggleBtnRef = useRef<HTMLButtonElement>(null);
   const chainId = useChainId();
-
+  const router = useRouter();
   type TokenKey = "DOP" | "USDC" | "ETH";
   const [selectedToken, setSelectedToken] = useState<TokenKey>("DOP");
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false);
@@ -164,8 +165,13 @@ export function Header() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
           <div className="flex items-center gap-3">
-            <Image src={logo} alt="Logo" className="h-8 w-8 rounded" />
-            <Link href="/" className="text-xl font-semibold text-white">
+            <Image
+              onClick={() => router.push("/")}
+              src={logo}
+              alt="Logo"
+              className="h-8 w-8 rounded"
+            />
+            <Link href="/" className="text-xl font-semibold text-white hidden">
               Dynasty of Penguins
             </Link>
           </div>
@@ -220,19 +226,8 @@ export function Header() {
 
           {/* Right controls (mobile + desktop) */}
           <div className="flex items-center gap-2 md:gap-4">
-            <Link
-              href="/chat"
-              className="relative inline-flex items-center justify-center rounded-md p-2 text-gray-300 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-white/20"
-              aria-label="Open chat"
-              title="Messages"
-            >
-              <MessageSquare className="h-5 w-5" />
-              {hasUnread && (
-                <span className="absolute -top-0.5 -right-0.5 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 ring-2 ring-black" />
-              )}
-            </Link>
             {/* Token balance selector (desktop) */}
-            <div className="hidden md:block relative" ref={tokenDropdownRef}>
+            <div className=" md:block relative" ref={tokenDropdownRef}>
               <button
                 onClick={() => setTokenDropdownOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-md border border-gray-800 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
@@ -311,10 +306,22 @@ export function Header() {
                 </div>
               )}
             </div>
+            <Link
+              href="/chat"
+              className="relative inline-flex items-center justify-center rounded-md p-2 text-gray-300 hover:text-white hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-white/20"
+              aria-label="Open chat"
+              title="Messages"
+            >
+              <MessageSquare className="h-5 w-5" />
+              {hasUnread && (
+                <span className="absolute -top-0.5 -right-0.5 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 ring-2 ring-black" />
+              )}
+            </Link>
             {/* Hide connect button on mobile to reduce clutter */}
             <div className="hidden md:block">
               <ConnectButton chainStatus="icon" showBalance={false} />
             </div>
+
             {/* Mobile menu toggle */}
             <button
               ref={toggleBtnRef}
